@@ -1,9 +1,14 @@
 ﻿using System;
+using Tebex_RCON;
 using Tebex.API;
 using Tebex.RCON;
 
-
+/*
 var adapter = new TebexRconAdapter();
+TebexApi.Instance.InitAdapter(adapter);
+*/
+
+var adapter = new TebexTelnetAdapter();
 TebexApi.Instance.InitAdapter(adapter);
 
 while (true)
@@ -27,6 +32,7 @@ while (true)
         continue;
     }
     
+    /* TODO this worked for RCON only, support Telnet too
     if (input.Contains("tebex."))
     {
         adapter.HandleTebexCommand(input);
@@ -38,7 +44,7 @@ while (true)
         var response = adapter.Rcon.SendCommandAndReadResponse(2, input);
         Console.WriteLine(response);
         return;
-    }
+    }*/
     
     // Null rcon
     Console.WriteLine("Unrecognized command. If you ran a server command, we are not connected to a game server.");
