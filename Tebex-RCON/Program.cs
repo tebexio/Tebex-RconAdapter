@@ -1,9 +1,14 @@
 ﻿using System;
+using Tebex_RCON;
 using Tebex.API;
 using Tebex.RCON;
 
-
+/*
 var adapter = new TebexRconAdapter();
+TebexApi.Instance.InitAdapter(adapter);
+*/
+
+var adapter = new TebexTelnetAdapter();
 TebexApi.Instance.InitAdapter(adapter);
 
 while (true)
