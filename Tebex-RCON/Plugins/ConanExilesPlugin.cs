@@ -13,7 +13,7 @@ namespace Tebex.Plugins
         
         public ConanExilesPlugin(TebexRconClient client, TebexRconAdapter adapter) : base(client, adapter)
         {
-            TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(121), () =>
+            TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(120), () =>
             {
                 GetOnlinePlayers();
             });
@@ -59,8 +59,10 @@ namespace Tebex.Plugins
         
         public void GetOnlinePlayers()
         {
+            _adapter.LogDebug($"Querying server for online player list...");
             var currentPlayerList = ConanPlayerInfo.ParsePlayerList(_rcon.SendCommandAndReadResponse(2, "listplayers"));
-
+            _adapter.LogDebug($"Detected {currentPlayerList.Count} online Conan players");
+            
             List<string> oldJoins = new List<string>();
             foreach (var playerInfo in lastPlayerList)
             {
@@ -138,6 +140,20 @@ namespace Tebex.Plugins
         public override object GetPlayerRef(string idOrUsername)
         {
             return GetPlayerPositionId(idOrUsername);
+        }
+
+        public override string ExpandGameUsernameVariables(string cmd, object playerObj)
+        {
+            foreach (var playerInfo in lastPlayerList)
+            {
+                if (playerInfo.Idx == (int)playerObj) //playerObj is player position ID for Conan Exiles
+                {
+                    cmd = cmd.Replace("{playercharactername}", playerInfo.CharName);
+                    break;
+                }
+            }
+
+            return cmd;
         }
 
         /**

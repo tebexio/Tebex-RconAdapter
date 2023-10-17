@@ -19,7 +19,7 @@ namespace Tebex.RCON
         private const string ConfigFilePath = "tebex-config.json";
         private TebexRconPlugin Plugin;
         private static bool IsReady = false;
-        public static readonly string Version = "1.0.0-alpha.1";
+        public static readonly string Version = "1.0.0-alpha.3";
         
         public override void Init()
         {
@@ -56,6 +56,8 @@ namespace Tebex.RCON
                     // Connect to RCON after secret key is verified correct
                     LogInfo($"Connecting to game server at {PluginConfig.RconIp}:{PluginConfig.RconPort}...");
                     Rcon = new TebexRconClient(PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword, true);
+                    Plugin = new ConanExilesPlugin(Rcon, this);
+
                     var (successful,error) = Rcon.Connect();
                     if (!successful)
                     {
@@ -63,10 +65,9 @@ namespace Tebex.RCON
                         return;
                     }
                     
-                    LogInfo(" > Successful");
+                    LogInfo(" > Successful RCON connection");
                     
                     LogInfo($"Configuring adapter for ${info.AccountInfo.GameType}");
-                    Plugin = new ConanExilesPlugin(Rcon, this);
                     
                     // Ensure the game at the RCON endpoint is the one for this account
                     if (!Plugin.AuthenticateGame(info.AccountInfo.GameType))
@@ -76,13 +77,9 @@ namespace Tebex.RCON
                         Environment.Exit(1);
                         return;
                     }
-                    LogInfo(" > Successful");
+                    LogInfo(" > Successfully authed the game server");
                     
-                    /* TODO allow plugin to decide if it reads rcon
-                    Thread readThread = new Thread(Rcon.ReadRconMessages);
-                    readThread.Start();
-                    */
-                    
+                    Rcon.StartReconnectThread();
                     IsReady = true;
                 }, (tebexError) =>
                 {
@@ -318,6 +315,8 @@ namespace Tebex.RCON
             LogInfo("Executing online command...");
             
             var cmd = ExpandUsernameVariables(command.CommandToRun, playerObj);
+            cmd = Plugin.ExpandGameUsernameVariables(cmd, playerObj);
+            
             LogInfo($"> Executing online command: {cmd}");
             var response = Rcon.SendCommandAndReadResponse(2, cmd);
             LogInfo($"> Server responded: '{response}'");
@@ -720,18 +719,20 @@ namespace Tebex.RCON
         #region Threading
         public static async void ExecuteEvery(TimeSpan interval, Action action)
         {
-            if (!IsReady)
-            {
-                return;
-            }
-            
             CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
             while (!cancellationTokenSource.Token.IsCancellationRequested)
             {
+                if (!IsReady)
+                {
+                    // Due but not ready, try to execute every second
+                    await Task.Delay(1000, cancellationTokenSource.Token);
+                }
+                
                 action();
 
                 try
                 {
+                    // Due and ready, wait for the right interval
                     await Task.Delay(interval, cancellationTokenSource.Token);
                 }
                 catch (TaskCanceledException)

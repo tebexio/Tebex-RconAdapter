@@ -20,13 +20,17 @@ namespace Tebex.RCON
             this.port = port;
             this.password = password;
             this.reconnectOnFail = reconnectOnFail;
+        }
+
+        public void StartReconnectThread()
+        {
             if (reconnectOnFail)
             {
                 reconnectThread = new Thread(ReconnectLoop);
                 reconnectThread.Start();
             }
         }
-
+        
         private void ReconnectLoop()
         {
             while (true)
@@ -100,30 +104,33 @@ namespace Tebex.RCON
             request[12 + commandBytes.Length] = 0x00;
             request[13 + commandBytes.Length] = 0x00;
 
+            if (listener != null)
+            {
+                listener.GetAdapter().LogDebug($"RCON ({host}:{port}) -> {requestType}|'{request.Length} bytes'");    
+            }
             stream.Write(request, 0, request.Length);
         }
 
         public string SendCommandAndReadResponse(int requestType, string payload)
         {
-            if (listener != null)
-            {
-                listener.GetAdapter().LogDebug($"RCON ({host}:{port}) -> {requestType}|'{payload}'");    
-            }
-            
             SendCommand(requestType, payload);
 
             byte[] response = new byte[4096];
+            if (listener != null)
+            {
+                listener.GetAdapter().LogDebug($"RCON ({host}:{port}) -> READ WAIT'");
+            }
+
             int bytesRead = stream.Read(response, 0, response.Length);
 
             int responseId = BitConverter.ToInt32(response, 4);
             int responseType = BitConverter.ToInt32(response, 8);
             string responseString = Encoding.UTF8.GetString(response, 12, bytesRead - 14);
+
             if (listener != null)
             {
-                listener.GetAdapter().LogDebug($"'{responseString}' <- ({host}:{port}) RCON");    
+                listener.GetAdapter().LogDebug($"RCON ({host}:{port}) <- {responseString}'");
             }
-            
-            
             return responseString;
         }
 

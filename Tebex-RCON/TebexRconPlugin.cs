@@ -34,5 +34,7 @@ namespace Tebex.RCON
         public abstract string GetGameName();
 
         public abstract object GetPlayerRef(string idOrUsername);
+
+        public abstract string ExpandGameUsernameVariables(string cmd, object playerObj);
     }
 }

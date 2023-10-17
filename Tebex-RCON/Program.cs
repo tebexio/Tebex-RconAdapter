@@ -37,7 +37,7 @@ while (true)
     {
         var response = adapter.Rcon.SendCommandAndReadResponse(2, input);
         Console.WriteLine(response);
-        return;
+        continue;
     }
     
     // Null rcon
