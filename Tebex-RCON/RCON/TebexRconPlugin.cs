@@ -1,16 +1,20 @@
-﻿using Tebex.RCON;
+﻿using Tebex.Adapters;
+using Tebex.RCON;
 
-namespace Tebex.RCON
+namespace Tebex.RCON.Protocol
 {
+    /**
+     * Implements game or protocol-specific actions using the RCON adapter
+     */
     public abstract class TebexRconPlugin
     {
-        protected TebexRconClient _rcon;
-        protected TebexRconAdapter _adapter;
-        public TebexRconPlugin(TebexRconClient client, TebexRconAdapter adapter)
+        protected ProtocolManagerBase _protocolManager;
+        protected BaseTebexAdapter _adapter;
+        public TebexRconPlugin(ProtocolManagerBase protocolManager, BaseTebexAdapter adapter)
         {
             _adapter = adapter;
-            _rcon = client;
-            _rcon.SetMessageListener(this);
+            _protocolManager = protocolManager;
+            _protocolManager.SetMessageListener(this);
         }
 
         public string GetPluginVersion()
@@ -18,7 +22,7 @@ namespace Tebex.RCON
             return "0.0.1";
         }
         
-        public TebexRconAdapter GetAdapter()
+        public BaseTebexAdapter GetAdapter()
         {
             return _adapter;
         }

@@ -1,29 +1,12 @@
-﻿using Tebex_RCON;
-using Tebex.API;
-using Tebex.RCON;
+﻿using Tebex.Adapters;
+using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
 {
-    public class SevenDaysPlugin : TebexTelnetPlugin
+    public class SevenDaysPlugin : TebexRconPlugin
     {
-        public SevenDaysPlugin(TebexTelnetClient client, TebexTelnetAdapter adapter) : base(client, adapter)
+        public SevenDaysPlugin(ProtocolManagerBase protocolManager, BaseTebexAdapter adapter) : base(protocolManager, adapter)
         {
-            var receiveTask = client.ReceiveAsync();
-            var sendTask = client.SendAsync("help");
-            sendTask.Wait();
-
-            Console.WriteLine("Waiting for response...");
-            receiveTask.Wait(5000);
-
-            if (receiveTask.IsCompleted)
-            {
-                Console.WriteLine("Finished!");
-                Console.WriteLine(receiveTask.Result);
-            }
-            else
-            {
-                Console.WriteLine("Failed!");
-            }
         }
         
         public override string GetGameName()
@@ -55,6 +38,11 @@ namespace Tebex.Plugins
         {
             throw new NotImplementedException();
             return null;
+        }
+
+        public override string ExpandGameUsernameVariables(string cmd, object playerObj)
+        {
+            throw new NotImplementedException();
         }
     }   
 }

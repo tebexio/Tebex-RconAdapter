@@ -18,10 +18,12 @@ namespace Tebex.API
         {
         }
 
-        public void InitAdapter(BaseTebexAdapter adapter)
+        public void InitAdapter(BaseTebexAdapter adapter, Action? preInit = null, Action? postInit = null)
         {
             Adapter = adapter;
+            preInit?.Invoke();
             adapter.Init();
+            postInit?.Invoke();
         }
         
         // Used so that we don't depend on Oxide

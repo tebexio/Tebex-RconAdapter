@@ -1,14 +1,16 @@
+using System.Net;
 using Newtonsoft.Json;
 using Tebex.API;
 using Tebex.Triage;
 
 namespace Tebex.Adapters
 {
+    /** Provides logic for Tebex operations via the Tebex Plugin API */
     public abstract class BaseTebexAdapter
     {
         public static BaseTebexAdapter Instance => _adapterInstance.Value;
         private static readonly Lazy<BaseTebexAdapter> _adapterInstance = new Lazy<BaseTebexAdapter>();
-        
+
         public static TebexConfig PluginConfig { get; set; } = new TebexConfig();
         
         /** For rate limiting command queue based on next_check */
@@ -641,6 +643,8 @@ namespace Tebex.Adapters
         public abstract bool IsPlayerOnline(string playerRefId);
         public abstract object GetPlayerRef(string playerId);
 
+        public abstract void SaveConfig();
+
         /**
          * As we support the use of different games across the Tebex Store
          * we offer slightly different ways of getting a customer username or their ID.
@@ -725,6 +729,434 @@ namespace Tebex.Adapters
                     LogDebug("Triage API encountered a server error while submitting manual triage event: " + body);
                     onError(code, body);
                 });
+        }
+        
+        #region Commands
+
+        public void HandleTebexCommand(string command)
+        {
+            var splitCommand = command.Split(" ");
+            var commandName = splitCommand[0];
+            var commandArgs = splitCommand.Skip(1).ToArray();
+
+            switch (commandName)
+            {
+                case "tebex.help":
+                    TebexHelpCommand();
+                    break;
+                case "tebex.setup":
+                    TebexSetupCommand();
+                    break;
+                case "tebex.debug":
+                    TebexDebugCommand(commandArgs);
+                    break;
+                case "tebex.secret":
+                    TebexSecretCommand(commandArgs);
+                    break;
+                case "tebex.refresh":
+                    TebexRefreshCommand();
+                    break;
+                case "tebex.info":
+                    TebexInfoCommand();
+                    break;
+                case "tebex.report":
+                    TebexReportCommand(commandArgs);
+                    break;
+                case "tebex.forcecheck":
+                    TebexForceCheckCommand();
+                    break;
+                case "tebex.lookup":
+                    TebexLookupCommand(commandArgs);
+                    break;
+                case "tebex.packages":
+                    TebexPackagesCommand();
+                    break;
+                default:
+                    Console.WriteLine("Tebex command not recognized, use tebex.help for a list of commands.");
+                    break;
+            }
+        }
+                
+        public void TebexReportCommand(string[] args)
+        {
+            if (args.Length == 0) // require /confirm to send
+            {
+                LogInfo("Please run `tebex.report confirm 'Your description here'` to submit your report. The following information will be sent to Tebex: ");
+                LogInfo("- Your game version, store id, and server IP.");
+                LogInfo("- Your username and IP address.");
+                LogInfo("- Please include a short description of the issue you were facing.");
+            }
+
+            if (args.Length >= 2 && args[0] == "confirm")
+            {
+                LogInfo("Sending your report to Tebex...");
+                
+                var triageEvent = new TebexTriage.ReportedTriageEvent();
+                /* FIXME
+                triageEvent.GameId = $"{GetPlugin().GetGameName()}";
+                triageEvent.FrameworkId = "RCONAdapter";
+                triageEvent.PluginVersion = GetPlugin().GetPluginVersion();
+                triageEvent.ServerIp = Protocol.GetIpAndPort();
+                */
+                triageEvent.ErrorMessage = "Player Report: " + string.Join(" ", args[1..]);
+                triageEvent.Trace = "";
+                triageEvent.Metadata = new Dictionary<string, string>()
+                {
+                
+                };
+                triageEvent.UserIp = "";
+                
+                ReportManualTriageEvent(triageEvent, (code, body) =>
+                {
+                    LogInfo("Your report has been sent. Thank you!");
+                }, (code, body) =>
+                {
+                    LogInfo("An error occurred while submitting your report. Please contact our support team directly.");
+                    LogInfo("Error: " + body);
+                });
+                
+                return;
+            }
+            
+            LogInfo("Usage: tebex.report <confirm> '<message>'");
+        }
+
+        public void TebexLookupCommand(string[] args)
+        {
+            if (args.Length != 1)
+            {
+                LogInfo($"Usage: tebex.lookup <playerId/playerUsername>");
+                return;
+            }
+
+            GetUser(args[0], (code, body) =>
+            {
+                var response = JsonConvert.DeserializeObject<TebexApi.UserInfoResponse>(body);
+                LogInfo($"Username: {response.Player.Username}");
+                LogInfo($"Id: {response.Player.Id}");
+                LogInfo($"Payments Total: ${response.Payments.Sum(payment => payment.Price)}");
+                LogInfo($"Chargeback Rate: {response.ChargebackRate}%");
+                LogInfo($"Bans Total: {response.BanCount}");
+                LogInfo($"Payments: {response.Payments.Count}");
+            }, error =>
+            {
+                LogInfo(error.ErrorMessage);
+            });
+        }
+
+        public void TebexPackagesCommand()
+        {
+            GetPackages(packages =>
+            {
+                PrintPackages(packages);
+            });
+        }
+        
+        private void PrintPackages(List<TebexApi.Package> packages)
+        {
+            // Index counter for selecting displayed items
+            var packIndex = 1;
+
+            LogInfo("---------------------------------");
+            LogInfo("      PACKAGES AVAILABLE         ");
+            LogInfo("---------------------------------");
+
+            // Sort categories in order and display
+            var orderedPackages = packages.OrderBy(package => package.Order).ToList();
+            for (var i = 0; i < packages.Count; i++)
+            {
+                var package = orderedPackages[i];
+                // Add additional flair on sales
+                LogInfo($"[P{packIndex}] {package.Name}");
+                LogInfo($"Category: {package.Category.Name}");
+                LogInfo($"Description: {package.Description}");
+
+                if (package.Sale != null && package.Sale.Active)
+                {
+                    LogInfo($"Original Price: {package.Price} {package.GetFriendlyPayFrequency()}  SALE: {package.Sale.Discount} OFF!");
+                }
+                else
+                {
+                    LogInfo($"Price: {package.Price} {package.GetFriendlyPayFrequency()}");
+                }
+
+                //LogInfo($"Purchase with 'tebex.checkout P{packIndex}' or 'tebex.checkout {package.Id}'");
+                LogInfo("--------------------------------");
+
+                packIndex++;
+            }
+        }
+        public void TebexRefreshCommand()
+        {
+            LogInfo("Refreshing listings...");
+            Cache.Instance.Remove("packages");
+            Cache.Instance.Remove("categories");
+            
+            RefreshListings((code, body) =>
+            {
+                if (Cache.Instance.HasValid("packages") && Cache.Instance.HasValid("categories"))
+                {
+                    var packs = (List<TebexApi.Package>)Cache.Instance.Get("packages").Value;
+                    var categories = (List<TebexApi.Category>)Cache.Instance.Get("categories").Value;
+                    LogInfo($"Fetched {packs.Count} packages out of {categories.Count} categories");
+                }
+            });
+        }
+        public void TebexHelpCommand()
+        {
+            LogInfo("Tebex Commands Available:");
+            LogInfo("-- Administrator Commands --");
+            LogInfo("tebex.setup                       - Starts the guided setup.");
+            LogInfo("tebex.debug <on/off>              - Enables or disables debug logging.");
+            LogInfo("tebex.secret <secretKey>          - Sets your server's secret key.");
+            //LogInfo("tebex.sendlink <player> <packId>  - Sends a purchase link to the provided player.");
+            LogInfo("tebex.forcecheck                  - Forces the command queue to check for any pending purchases.");
+            LogInfo("tebex.refresh                     - Refreshes store information, packages, categories, etc.");
+            LogInfo("tebex.report                      - Generates a report for the Tebex support team.");
+            //LogInfo("tebex.ban <playerId>              - Bans a player from using your Tebex store.");
+            LogInfo("tebex.lookup <playerId>           - Looks up store statistics for the given player.");
+            
+            //LogInfo("-- User Commands --");
+            //LogInfo("tebex.info                       - Get information about this server's store.");
+            //LogInfo("tebex.categories                 - Shows all item categories available on the store.");
+            LogInfo("tebex.packages <opt:categoryId>  - Shows all item packages available in the store or provided category.");
+            //LogInfo("tebex.checkout <packId>          - Creates a checkout link for an item. Visit to purchase.");
+            //LogInfo("tebex.stats                      - Gets your stats from the store, purchases, subscriptions, etc.");
+        }
+
+        public void TebexSetupCommand()
+        {
+            DoSetup();
+        }
+        
+        public void TebexDebugCommand(string[] args)
+        {
+            if (args.Length != 1)
+            {
+                LogInfo("Invalid syntax. Usage: \"tebex.debug <on/off>\"");
+                return;
+            }
+
+            if (IsTruthy(args[0]))
+            {
+                PluginConfig.DebugMode = true;
+                SaveConfig();
+            } 
+            else if (IsFalsy(args[0]))
+            {
+                PluginConfig.DebugMode = false;
+                SaveConfig();    
+            }
+            else
+            {
+                LogInfo("Invalid syntax. Usage: \"tebex.debug <on/off>\"");
+            }
+            
+            LogInfo($"Debug mode: {PluginConfig.DebugMode}");
+        }
+        
+        public void TebexSecretCommand(string[] args)
+        {
+            if (args.Length != 1)
+            {
+                LogInfo("Invalid syntax. Usage: \"tebex.secret <secret>\"");
+                return;
+            }
+
+            var oldKey = PluginConfig.SecretKey;
+            LogInfo("Setting your secret key...");
+            PluginConfig.SecretKey = args[0];
+
+            // Reset store info so that we don't fetch from the cache
+            Cache.Instance.Remove("information");
+
+            // Any failure to set secret key is logged to console automatically
+            FetchStoreInfo(info =>
+            {
+                LogInfo($"This server is now registered as server {info.ServerInfo.Name} for the web store {info.AccountInfo.Name}");
+            }, tebexError =>
+            {
+                LogError($"Tebex error while setting your secret key: {tebexError.ErrorMessage}");
+                PluginConfig.SecretKey = oldKey;
+            }, (code, body) =>
+            {
+                LogError($"Error while setting your secret key: {body}");
+                PluginConfig.SecretKey = oldKey;
+            });
+            
+            SaveConfig();
+        }
+
+        public void TebexInfoCommand()
+        {
+            FetchStoreInfo((info) =>
+            {
+                LogInfo("Information for this server:");
+                LogInfo($" > {info.ServerInfo.Name} for webstore {info.AccountInfo.Name}");
+                LogInfo($" > Server prices are in {info.AccountInfo.Currency.Iso4217}");
+                LogInfo($" > Webstore domain {info.AccountInfo.Domain}");
+            });
+        }
+
+        public void TebexForceCheckCommand()
+        {
+            LogInfo("Forcing check of all Tebex operations...");
+            ProcessCommandQueue(true);
+            ProcessJoinQueue(true);
+            DeleteExecutedCommands(true);
+            RefreshStoreInformation(true);
+            LogInfo("> Force check completed.");
+        }
+        
+        public void DoSetup()
+        {
+            LogInfo("Starting Tebex setup...");
+            Console.WriteLine("> Add your game server at https://creator.tebex.io/game-servers/ to get your key.");
+            SetupSecretKey();
+        }
+
+        public void SetupSecretKey()
+        {
+            var oldKey = PluginConfig.SecretKey;
+            var secretKey = "";
+            
+            Console.Write("Enter store secret key: ");
+            secretKey = Console.ReadLine();
+            if (string.IsNullOrEmpty(secretKey))
+            {
+                SetupSecretKey();
+            }
+
+            PluginConfig.SecretKey = secretKey;
+            Console.WriteLine("> Verifying secret key...");
+            FetchStoreInfo(info =>
+            {
+                Console.WriteLine("> Secret key set successfully");
+                Console.WriteLine();
+                SaveConfig();
+                //FIXME
+                /*SetupRCONConnection();*/
+            }, error =>
+            {
+                LogInfo($"> An error occurred: {error.ErrorMessage}");
+                PluginConfig.SecretKey = oldKey;
+                SaveConfig();
+                Environment.Exit(1);
+            }, (code, message) =>
+            {
+                LogError($"> Encountered server error: {message}. Please try again.");
+                PluginConfig.SecretKey = oldKey;
+                SaveConfig();
+                Environment.Exit(1);
+            });
+        }
+
+        /*
+        public void SetupRCONConnection()
+        {
+            while (true)
+            {
+                Console.Write("Enter server RCON IP (empty to skip): ");
+                var serverIp = Console.ReadLine();
+                if (String.IsNullOrEmpty(serverIp))
+                {
+                    break;
+                }
+
+                IPAddress parsedIp;
+                if (!IPAddress.TryParse(serverIp, out parsedIp))
+                {
+                    Console.WriteLine("> Invalid IP address. Please enter a valid IP address.");
+                    continue;
+                }
+
+                PluginConfig.RconIp = parsedIp.ToString();
+                SaveConfig();
+                break;
+            }
+
+            while (true)
+            {
+                Console.Write("Enter server RCON port (empty to skip): ");
+                var rconPort = Console.ReadLine();
+                var rconIntPort = 0;
+                if (String.IsNullOrEmpty(rconPort))
+                {
+                    break;
+                }
+
+                if (!int.TryParse(rconPort, out rconIntPort))
+                {
+                    Console.WriteLine("> Invalid port. Must be a number between 1 - 65535.");
+                    continue;
+                }
+
+                if (rconIntPort > 65535 || rconIntPort < 1)
+                {
+                    Console.WriteLine("> Invalid range. Must be between 1 - 65535.");
+                    continue;
+                }
+
+                PluginConfig.RconPort = rconIntPort;
+                SaveConfig();
+                break;
+            }
+            
+            Console.Write("Enter the RCON password (enter to skip): ");
+            var rconPassword = Console.ReadLine();
+            if (string.IsNullOrEmpty(rconPassword.ToString()))
+            {
+                PluginConfig.RconPassword = "";
+                LogWarning("> WARNING! It is insecure to use RCON without a password.");
+            }
+            
+            PluginConfig.RconPassword = rconPassword.ToString();
+            SaveConfig();
+            LogInfo($"> Checking connection to the server at {PluginConfig.RconIp}:{PluginConfig.RconPort}...");
+            
+            var client = new StdProtocolManager();
+            bool success = client.Connect(PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword, false);
+            if (!success)
+            {
+                LogError("> Failed to connect to that server. Please double check that it is online, and try again.");
+            }
+            else
+            {
+                LogInfo("> Connection successful. Tebex is now set up properly.");
+                LogInfo("Please leave this application running in order for Tebex commands to be processed.");
+            }
+        }*/
+        
+        #endregion
+        
+        private static readonly HashSet<string> TruthyStrings = new HashSet<string>
+        {
+            "true", "yes", "on", "1", "enabled", "enable"
+        };
+
+        private static readonly HashSet<string> FalsyStrings = new HashSet<string>
+        {
+            "false", "no", "off", "0", "disabled", "disable"
+        };
+
+        public static bool IsTruthy(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return false;
+            }
+
+            return TruthyStrings.Contains(input.Trim().ToLowerInvariant());
+        }
+
+        public static bool IsFalsy(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return true;
+            }
+
+            return FalsyStrings.Contains(input.Trim().ToLowerInvariant());
         }
     }
 }

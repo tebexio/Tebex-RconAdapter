@@ -1,5 +1,5 @@
-﻿using Tebex.API;
-using Tebex.RCON;
+﻿using Tebex.Adapters;
+using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
 {
@@ -11,7 +11,7 @@ namespace Tebex.Plugins
 
         private List<ConanPlayerInfo> lastPlayerList = new List<ConanPlayerInfo>();
         
-        public ConanExilesPlugin(TebexRconClient client, TebexRconAdapter adapter) : base(client, adapter)
+        public ConanExilesPlugin(ProtocolManagerBase client, TebexRconAdapter adapter) : base(client, adapter)
         {
             TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(120), () =>
             {
@@ -28,9 +28,14 @@ namespace Tebex.Plugins
             public string PlatformID { get; set; }
             public string PlatformName { get; set; }
             
-            public static List<ConanPlayerInfo> ParsePlayerList(string input)
+            public static List<ConanPlayerInfo> ParsePlayerList(string? input)
             {
                 var playerInfoList = new List<ConanPlayerInfo>();
+                if (input == null)
+                {
+                    return playerInfoList;
+                }
+                
                 string[] lines = input.Trim().Split('\n');
         
                 for (int i = 1; i < lines.Length; i++)
@@ -60,7 +65,8 @@ namespace Tebex.Plugins
         public void GetOnlinePlayers()
         {
             _adapter.LogDebug($"Querying server for online player list...");
-            var currentPlayerList = ConanPlayerInfo.ParsePlayerList(_rcon.SendCommandAndReadResponse(2, "listplayers"));
+            _protocolManager.Write("listplayers");
+            var currentPlayerList = ConanPlayerInfo.ParsePlayerList(_protocolManager.Read());
             _adapter.LogDebug($"Detected {currentPlayerList.Count} online Conan players");
             
             List<string> oldJoins = new List<string>();
