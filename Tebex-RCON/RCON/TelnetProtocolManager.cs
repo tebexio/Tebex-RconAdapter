@@ -5,14 +5,12 @@ namespace Tebex.RCON.Protocol
 {
     public class TelnetProtocolManager : ProtocolManagerBase, IDisposable
     {
-        private readonly TcpClient _tcpClient;
-        private NetworkStream _networkStream;
         private StreamReader _streamReader;
         private StreamWriter _streamWriter;
 
         public TelnetProtocolManager()
         {
-            _tcpClient = new TcpClient();
+            TcpClient = new TcpClient();
         }
 
         public override bool Connect(string host, int port, string password, bool attemptReconnect)
@@ -22,7 +20,7 @@ namespace Tebex.RCON.Protocol
 
                 Listener?.GetAdapter().LogDebug($" TELNET -> connect {host}:{port}");
                 
-                var connectTask = _tcpClient.ConnectAsync(host, port);
+                var connectTask = TcpClient.ConnectAsync(host, port);
                 var waitTask = connectTask.WaitAsync(TimeSpan.FromSeconds(5));
                 waitTask.Wait();
 
@@ -31,11 +29,11 @@ namespace Tebex.RCON.Protocol
                     throw new IOException("Timeout while connecting via telnet");
                 }
 
-                _networkStream = _tcpClient.GetStream();
+                Stream = TcpClient.GetStream();
                 Listener?.GetAdapter().LogDebug($" TELNET -> stream opened");
                 
-                _streamReader = new StreamReader(_networkStream, Encoding.ASCII);
-                _streamWriter = new StreamWriter(_networkStream, Encoding.ASCII) { AutoFlush = true };
+                _streamReader = new StreamReader(Stream, Encoding.ASCII);
+                _streamWriter = new StreamWriter(Stream, Encoding.ASCII) { AutoFlush = true };
                 return true;
             }
             catch (Exception ex)
@@ -58,8 +56,7 @@ namespace Tebex.RCON.Protocol
             catch (Exception ex)
             {
                 Console.WriteLine($"Error receiving data: {ex.Message}");
-                Close();
-                return null;
+                return "";
             }
         }
 
@@ -81,8 +78,8 @@ namespace Tebex.RCON.Protocol
         {
             _streamWriter?.Dispose();
             _streamReader?.Dispose();
-            _networkStream?.Dispose();
-            _tcpClient?.Close();
+            Stream?.Dispose();
+            TcpClient?.Close();
         }
 
         public override string GetProtocolName()

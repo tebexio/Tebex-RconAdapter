@@ -79,21 +79,6 @@ namespace Tebex.RCON.Protocol
             return responseString;
         }
 
-        public void ReadRconMessages()
-        {
-            while (true)
-            {
-                byte[] response = new byte[4096];
-                int bytesRead = Stream.Read(response, 0, response.Length);
-
-                int responseId = BitConverter.ToInt32(response, 4);
-                int responseType = BitConverter.ToInt32(response, 8);
-                string responseString = Encoding.UTF8.GetString(response, 12, bytesRead - 14);
-
-                Listener?.HandleRconOutput(responseString);
-            }
-        }
-
         public void Disconnect()
         {
             Stream?.Close();

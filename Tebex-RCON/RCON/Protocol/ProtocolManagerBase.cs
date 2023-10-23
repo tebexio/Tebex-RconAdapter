@@ -1,18 +1,20 @@
 using System.Net.Sockets;
-using Tebex.RCON;
 
 namespace Tebex.RCON.Protocol;
 
 public abstract class ProtocolManagerBase
 {
+    /** Set to true in order to constantly poll the connection for data */
+    public bool EnablePolling = false;
+    
     protected TcpClient? TcpClient;
     protected NetworkStream? Stream;
     protected string Password = "";
     protected string Host = "127.0.0.1";
     protected int Port = 25565;
     protected bool ReconnectOnFail = false;
-    private Thread? _reconnectThread = null;
     
+    private Thread? _reconnectThread = null;
     protected TebexRconPlugin? Listener;
 
     public abstract string GetProtocolName();
@@ -61,6 +63,30 @@ public abstract class ProtocolManagerBase
         }
     }
 
+    /**
+     * Constantly reads a response from the remote connection and passes it to the listener's RCON output function
+     * for handling.
+     *
+     * If you need to stop polling in order to send sequential messages to the server, set EnablePolling = false and
+     * then run your subsequent Read() and Write(). When done, set EnablePolling = true 
+     */
+    public void PollRconMessages()
+    {
+        while (true)
+        {
+            if (TcpClient != null && TcpClient.Connected && EnablePolling)
+            {
+                var responseString = Read();
+                if (responseString != null)
+                {
+                    Listener?.HandleRconOutput(responseString);    
+                }
+            }
+            
+            Thread.Sleep(2);
+        }
+    }
+    
     public void SetMessageListener(TebexRconPlugin plugin)
     {
         Listener = plugin;
