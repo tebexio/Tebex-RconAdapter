@@ -10,25 +10,61 @@ This utility performs various operations to facilitate Tebex interactions with s
 - Windows OS or a system with Mono support
 - .NET runtime
 
-## Features
+## Key Features
 
-- Perform real-time operations such as player banning, granting permissions, etc.
-- Seamless integration with game servers lacking plugin/API support
-- Single-package deployment: includes all necessary DLLs and the core C# library
-- Cross-platform: works on both Windows and Mono systems
+- Connect your Tebex webstore to your game server without the use of plugins.
+- Process Tebex transactions and apply commands to your players using the RCON protocol.
+- Deploy and manage at scale using included Dockerfile or build and run an executable.
 
 ## Installation
 
-1. **Download the Latest Release**: Grab the latest version from the releases page.
-2. **Extract the Archive**: Unzip the archive to a folder of your choice.
-3. **Run the Executable**: Navigate to the folder and run `Tebex-RCON.exe`.
+To run in **Linux**, ensure the app is executable with `chmod +x ./Tebex-RCON` and launch with `./Tebex-RCON`.
 
-To run in **Linux**, ensure the app is executable with `chmod +x .\Tebex-RCON` and launch with `.\Tebex-RCON`.
+Example startup command:
+```
+./TebexRCON --game=7d2d --ip=127.0.0.1 --port=12345 --pass=password --telnet
+```
 
 The app must remain running in the background as it checks periodically with Tebex to execute needed game server commands.
 
-## Configuration
+Alternatively, you may use the provided **Dockerfile** to build and deploy the app from source. If using Docker, you must configure launch
+arguments via command line or environment variables.
 
+## Configuration and Launch
+
+### Command Line Args
+
+You can configure the RCON adapter directly from the command line with these arguments:
+
+```
+--key={storeKey}         Your webstore's secret key.
+
+--game={gameName}        The game plugin you wish to run. See available plugins below.
+
+--ip={serverIp}          The game server's IP address
+
+--port={serverPort}      Port for RCON connections on the game server
+
+--pass={password}        Password for your game server's RCON console
+
+--telnet                 Uses telnet protocol instead of RCON
+
+--debug                  Show debug logging while running
+```
+
+### Environment Variables
+
+You can also configure the RCON adapter to use environment variables at launch. **Any environment variables that are
+set below take precedence** over any value previously set in the config file or via command line.
+
+Available environment variables:
+- RCON_ADAPTER_KEY          
+- RCON_ADAPTER_GAME         
+- RCON_ADAPTER_HOST        
+- RCON_ADAPTER_PORT         
+- RCON_ADAPTER_PASSWORD
+
+### Config File
 A configuration file `tebex-config.json` will be created on first startup. Below is a sample configuration. The app will begin a guided wizard to generate the appropriate config for you.
 
 ```json

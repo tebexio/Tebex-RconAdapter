@@ -23,6 +23,11 @@ public abstract class ProtocolManagerBase
     public abstract string? Read();
     public abstract bool Connect(string host, int port, string password, bool attemptReconnect);
     public abstract void Close();
+
+    public bool IsConnected()
+    {
+        return TcpClient.Connected;
+    }
     
     public void StartReconnectThread()
     {

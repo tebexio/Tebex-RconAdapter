@@ -111,7 +111,7 @@ namespace Tebex.Adapters
             public bool AutoReportingEnabled = true;
             
             //public bool AllowGui = false;
-            public string SecretKey = "your-secret-key-here";
+            public string SecretKey = "";
             public int CacheLifetime = 30;
             
             // RCON specific
@@ -643,7 +643,7 @@ namespace Tebex.Adapters
         public abstract bool IsPlayerOnline(string playerRefId);
         public abstract object GetPlayerRef(string playerId);
 
-        public abstract void SaveConfig();
+        public abstract void SaveConfig(TebexConfig config);
 
         /**
          * As we support the use of different games across the Tebex Store
@@ -940,12 +940,12 @@ namespace Tebex.Adapters
             if (IsTruthy(args[0]))
             {
                 PluginConfig.DebugMode = true;
-                SaveConfig();
+                SaveConfig(PluginConfig);
             } 
             else if (IsFalsy(args[0]))
             {
                 PluginConfig.DebugMode = false;
-                SaveConfig();    
+                SaveConfig(PluginConfig);    
             }
             else
             {
@@ -984,7 +984,7 @@ namespace Tebex.Adapters
                 PluginConfig.SecretKey = oldKey;
             });
             
-            SaveConfig();
+            SaveConfig(PluginConfig);
         }
 
         public void TebexInfoCommand()
@@ -1033,20 +1033,20 @@ namespace Tebex.Adapters
             {
                 Console.WriteLine("> Secret key set successfully");
                 Console.WriteLine();
-                SaveConfig();
+                SaveConfig(PluginConfig);
                 //FIXME
                 /*SetupRCONConnection();*/
             }, error =>
             {
                 LogInfo($"> An error occurred: {error.ErrorMessage}");
                 PluginConfig.SecretKey = oldKey;
-                SaveConfig();
+                SaveConfig(PluginConfig);
                 Environment.Exit(1);
             }, (code, message) =>
             {
                 LogError($"> Encountered server error: {message}. Please try again.");
                 PluginConfig.SecretKey = oldKey;
-                SaveConfig();
+                SaveConfig(PluginConfig);
                 Environment.Exit(1);
             });
         }
