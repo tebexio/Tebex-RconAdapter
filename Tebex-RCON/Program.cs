@@ -21,6 +21,7 @@ Dictionary<string, Type> pluginTypes = new Dictionary<string, Type>()
 {
     {"7d2d", typeof(SevenDaysPlugin) },
     {"conanexiles", typeof(ConanExilesPlugin) },
+    {"dayz", typeof(DayZPlugin) },
 };
 List<string> pluginsAvailable = pluginTypes.Keys.ToList();
 
@@ -177,6 +178,12 @@ if (arguments.Contains("--telnet"))
 if (arguments.Contains("--debug")) 
 {
         
+}
+
+if (arguments.Contains("--battleye"))
+{
+    protocolManager = new BattleNetProtocolManager();
+    System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 }
 
 // Initialize the adapter's protocol and plugin type, then the API will initialize and boot the adapter.

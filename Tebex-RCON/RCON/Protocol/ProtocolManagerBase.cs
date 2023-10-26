@@ -26,6 +26,11 @@ public abstract class ProtocolManagerBase
 
     public bool IsConnected()
     {
+        if (TcpClient == null)
+        {
+            return false;
+        }
+        
         return TcpClient.Connected;
     }
     
