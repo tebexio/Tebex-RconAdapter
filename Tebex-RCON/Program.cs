@@ -22,7 +22,9 @@ Dictionary<string, Type> pluginTypes = new Dictionary<string, Type>()
     {"7d2d", typeof(SevenDaysPlugin) },
     {"conanexiles", typeof(ConanExilesPlugin) },
     {"dayz", typeof(DayZPlugin) },
+    {"projectzomboid", typeof(ProjectZomboidPlugin)}
 };
+
 List<string> pluginsAvailable = pluginTypes.Keys.ToList();
 
 // Convert command line arguments to a list
@@ -61,7 +63,7 @@ foreach (var arg in arguments)
         break;
     }
     
-    else if (arg.Contains("--telnet"))
+    else if (arg.Contains("--telnet") || arg.Contains("--battleye"))
     {
         // Pass
     }
