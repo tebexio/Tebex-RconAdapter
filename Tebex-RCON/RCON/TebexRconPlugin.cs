@@ -1,4 +1,5 @@
 ﻿using Tebex.Adapters;
+using Tebex.API;
 using Tebex.RCON;
 
 namespace Tebex.RCON.Protocol
@@ -37,7 +38,7 @@ namespace Tebex.RCON.Protocol
 
         public abstract string GetGameName();
 
-        public abstract object GetPlayerRef(string idOrUsername);
+        public abstract object GetPlayerRef(string idOrUsername, TebexApi.Command command);
 
         public abstract string ExpandGameUsernameVariables(string cmd, object playerObj);
     }

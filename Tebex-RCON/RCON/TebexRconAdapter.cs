@@ -238,7 +238,7 @@ namespace Tebex.Adapters
         public override void ExecuteOfflineCommand(TebexApi.Command command, string commandName, string[] args)
         {
             var rconCommand = command.CommandToRun;
-            ExpandOfflineVariables(rconCommand, command.Player);
+            rconCommand = ExpandOfflineVariables(rconCommand, command.Player);
             
             if (command.Conditions.Delay > 0)
             {
@@ -277,9 +277,9 @@ namespace Tebex.Adapters
             return _plugin.IsPlayerOnline(playerRefId);
         }
 
-        public override object GetPlayerRef(string playerId)
+        public override object GetPlayerRef(string playerId, TebexApi.Command command)
         {
-            return _plugin.GetPlayerRef(playerId);
+            return _plugin.GetPlayerRef(playerId, command);
         }
 
         public override string ExpandUsernameVariables(string input, object playerObj)

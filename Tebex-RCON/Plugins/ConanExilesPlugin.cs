@@ -1,4 +1,5 @@
 ﻿using Tebex.Adapters;
+using Tebex.API;
 using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
@@ -143,7 +144,7 @@ namespace Tebex.Plugins
             _adapter.LogDebug($"'{message}' <- RCON");
         }
 
-        public override object GetPlayerRef(string idOrUsername)
+        public override object GetPlayerRef(string idOrUsername, TebexApi.Command command)
         {
             return GetPlayerPositionId(idOrUsername);
         }

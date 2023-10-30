@@ -1,4 +1,5 @@
 ﻿using Tebex.Adapters;
+using Tebex.API;
 using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
@@ -7,6 +8,10 @@ namespace Tebex.Plugins
     {
         public ProjectZomboidPlugin(ProtocolManagerBase protocolManager, BaseTebexAdapter adapter) : base(protocolManager, adapter)
         {
+            new Thread(() =>
+            {
+                _protocolManager.PollRconMessages();    
+            }).Start();
         }
         
         public override string GetGameName()
@@ -19,9 +24,22 @@ namespace Tebex.Plugins
             throw new NotImplementedException();
         }
 
-        public override bool IsPlayerOnline(string playerId)
+        public override bool IsPlayerOnline(string playerId) // playerId will be in-game username provided by the player
         {
-            return false;
+            /*
+            _protocolManager.EnablePolling = false;
+            _protocolManager.Write("players");
+            bool found = false;
+            var cmdExecMessage = _protocolManager.Read();
+            _adapter.LogDebug($"player online check result: {cmdExecMessage}");
+            _protocolManager.EnablePolling = true;
+            return found;
+            */
+
+            /* Project Zomboid allows players to set their own "username" or in-game name within the server.
+                 This should be collected from the player using a custom variable,
+                 which is filled by the API and delivered via the RCON adapter.*/
+            return true;
         }
         
         public override bool AuthenticateGame(string gameType)
@@ -34,9 +52,15 @@ namespace Tebex.Plugins
             _adapter.LogInfo($"'{message}' <- RCON");
         }
 
-        public override object GetPlayerRef(string idOrUsername)
+        public override object GetPlayerRef(string idOrUsername, TebexApi.Command command)
         {
-            // Ref will be the desired steamid
+            // We are seeking the player's custom in-game name to determine if they are online
+            _adapter.LogDebug("Trying to fill player reference, need custom username!");
+            _adapter.LogDebug(command.CommandToRun);
+            
+            /*
+             * At time of execution the var names are not known 
+             */
             return idOrUsername;
         }
 

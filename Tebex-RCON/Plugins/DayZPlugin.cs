@@ -1,4 +1,5 @@
 ﻿using Tebex.Adapters;
+using Tebex.API;
 using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
@@ -34,7 +35,7 @@ namespace Tebex.Plugins
             _adapter.LogInfo($"'{message}' <- RCON");
         }
 
-        public override object GetPlayerRef(string idOrUsername)
+        public override object GetPlayerRef(string idOrUsername, TebexApi.Command command)
         {
             // Ref will be the desired steamid
             return idOrUsername;

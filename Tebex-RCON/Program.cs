@@ -7,7 +7,7 @@ using Tebex.RCON.Protocol;
 TebexRconAdapter adapter = new TebexRconAdapter();
 Type? pluginType = null;
 TebexRconPlugin? plugin = null;
-ProtocolManagerBase? protocolManager = new StdProtocolManager();
+ProtocolManagerBase? protocolManager = new SourceRconProtocolManager();
 
 var startupKey = "";
 var startupGame = "";

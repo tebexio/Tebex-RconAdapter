@@ -486,6 +486,7 @@ namespace Tebex.Adapters
                             
                             LogInfo($"Executing offline command: `{parsedCommand}`");
                             ExecuteOfflineCommand(command, commandName, args.ToArray());
+                            ExecutedCommands.Add(command);
                         }
                     }, (error) =>
                     {
@@ -545,7 +546,9 @@ namespace Tebex.Adapters
                             LogInfo($"> Processing {onlineCommands.Commands.Count} commands for this player...");
                             foreach (var command in onlineCommands.Commands)
                             {
-                                object playerRef = GetPlayerRef(onlineCommands.Player.Id);
+                                // Provide a reference to the entire command to a plugin's GetPlayerRef, so that we have
+                                // all potential player and command info available to try and find our desired reference.
+                                object playerRef = GetPlayerRef(onlineCommands.Player.Id, command);
                                 if (playerRef == null)
                                 {
                                     LogError($"No reference found for expected online player. Commands will be skipped for this player.");
@@ -641,7 +644,7 @@ namespace Tebex.Adapters
         public abstract void ExecuteOnlineCommand(TebexApi.Command command, object playerObj, string commandName, string[] args);
         
         public abstract bool IsPlayerOnline(string playerRefId);
-        public abstract object GetPlayerRef(string playerId);
+        public abstract object GetPlayerRef(string playerId, TebexApi.Command command);
 
         public abstract void SaveConfig(TebexConfig config);
 

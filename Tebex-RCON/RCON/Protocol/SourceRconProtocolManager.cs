@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Tebex.RCON.Protocol
 {
-    public class StdProtocolManager : ProtocolManagerBase
+    public class SourceRconProtocolManager : ProtocolManagerBase
     {
         public override bool Connect(string host, int port, string password, bool reconnectOnFail)
         {
@@ -87,7 +87,7 @@ namespace Tebex.RCON.Protocol
 
         public override string GetProtocolName()
         {
-            return "base";
+            return "SourceRCON";
         }
 
         public override void Write(string data)
