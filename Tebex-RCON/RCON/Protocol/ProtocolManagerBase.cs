@@ -36,7 +36,7 @@ public abstract class ProtocolManagerBase
     
     public void StartReconnectThread()
     {
-        if (ReconnectOnFail)
+        if (ReconnectOnFail && GetProtocolName() != "battleye") //BattlEye client implements its own reconnect logic
         {
             _reconnectThread = new Thread(ReconnectLoop);
             _reconnectThread.Start();

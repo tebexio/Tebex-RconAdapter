@@ -21,7 +21,7 @@ namespace Tebex.RCON.Protocol
             b.BattlEyeMessageReceived += BEMessageReceived;
             b.BattlEyeConnected += BEConnected;
             b.BattlEyeDisconnected += BEDisconnected;
-            b.ReconnectOnPacketLoss = true;
+            b.ReconnectOnPacketLoss = reconnectOnFail;
             var result = b.Connect();
             
             Console.WriteLine($"Connect result: {result}");
