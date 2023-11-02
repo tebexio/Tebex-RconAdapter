@@ -16,10 +16,7 @@ namespace Tebex.RCON.Protocol
             ReconnectOnFail = reconnectOnFail;
 
             var loginCredentials = new BattlEyeLoginCredentials(IPAddress.Parse(host), port, password);
-            Console.WriteLine(loginCredentials.Host);
-            Console.WriteLine(loginCredentials.Port);
-            Console.WriteLine(loginCredentials.Password);
-            
+
             BattlEyeClient b = new BattlEyeClient(loginCredentials);
             b.BattlEyeMessageReceived += BEMessageReceived;
             b.BattlEyeConnected += BEConnected;

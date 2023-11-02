@@ -182,7 +182,7 @@ if (arguments.Contains("--debug"))
         
 }
 
-if (arguments.Contains("--battleye"))
+if (arguments.Contains("--battleye") || startupGame.Equals("dayz"))
 {
     protocolManager = new BattleNetProtocolManager();
     System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
