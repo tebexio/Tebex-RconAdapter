@@ -52,7 +52,7 @@ public abstract class ProtocolManagerBase
     {
         while (true)
         {
-            if (TcpClient == null || !TcpClient.Connected)
+            if (!GetProtocolName().Equals("battleye") && (TcpClient == null || !TcpClient.Connected))
             {
                 try
                 {
@@ -60,6 +60,7 @@ public abstract class ProtocolManagerBase
                     if (!success)
                     {
                         Console.WriteLine($"RCON connection failed. Trying again in 5 seconds...");
+                        continue;
                     }
 
                     Console.WriteLine("Reconnect succeeded.");
