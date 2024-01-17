@@ -13,7 +13,7 @@ namespace Tebex.Plugins
         
         public ConanExilesPlugin(ProtocolManagerBase client, TebexRconAdapter adapter) : base(client, adapter)
         {
-            TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(120), () =>
+            TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(45), () =>
             {
                 GetOnlinePlayers();
             });

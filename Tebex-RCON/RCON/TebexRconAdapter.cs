@@ -119,7 +119,7 @@ namespace Tebex.Adapters
             });
 
             // Setup timed functions
-            ExecuteEvery(TimeSpan.FromSeconds(120), () =>
+            ExecuteEvery(TimeSpan.FromSeconds(45), () =>
             {
                 if (Protocol != null && Protocol.IsConnected())
                 {
@@ -127,12 +127,12 @@ namespace Tebex.Adapters
                 }
             });
             
-            ExecuteEvery(TimeSpan.FromSeconds(60), () =>
+            ExecuteEvery(TimeSpan.FromSeconds(45), () =>
             {
                 DeleteExecutedCommands(false);
             });
             
-            ExecuteEvery(TimeSpan.FromSeconds(60), () =>
+            ExecuteEvery(TimeSpan.FromSeconds(45), () =>
             {
                 ProcessJoinQueue(false);
             });
