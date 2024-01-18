@@ -218,6 +218,12 @@ while (true)
     // Pass through any input to the underlying RCON connection
     if (adapter.GetProtocol() != null)
     {
+        if (!adapter.GetProtocol().IsConnected())
+        {
+            Console.WriteLine("Tebex is not connected.");
+            continue;
+        }
+        
         adapter.GetProtocol()?.Write(input); //missing "2" for auth
         var response = adapter.GetProtocol()?.Read();
         Console.WriteLine(response);

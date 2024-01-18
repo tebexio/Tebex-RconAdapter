@@ -15,7 +15,10 @@ namespace Tebex.Plugins
         {
             TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(45), () =>
             {
-                GetOnlinePlayers();
+                if (_protocolManager.IsConnected())
+                {
+                    GetOnlinePlayers();    
+                }
             });
         }
 
