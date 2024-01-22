@@ -81,6 +81,7 @@ var envHost = Environment.GetEnvironmentVariable("RCON_ADAPTER_HOST");
 var envPort = Environment.GetEnvironmentVariable("RCON_ADAPTER_PORT");
 var envPass = Environment.GetEnvironmentVariable("RCON_ADAPTER_PASSWORD");
 var envDebug = Environment.GetEnvironmentVariable("RCON_ADAPTER_DEBUGMODE");
+var envIsService = Environment.GetEnvironmentVariable("RCON_ADAPTER_SERVICEMODE");
 
 if (envKey != null)
 {
@@ -197,6 +198,14 @@ TebexApi.Instance.InitAdapter(adapter);
 // Transition to command line input
 while (true)
 {
+    // When running as a service, trying to accept input will cause this to run indefinitely. In service mode
+    // the adapter creates threads for its needed processes, so here we just wait.
+    if (envIsService == "true")
+    {
+        Thread.Sleep(1000);
+        continue;
+    }
+    
     Console.Write("Tebex> ");
     var input = Console.ReadLine();
 
