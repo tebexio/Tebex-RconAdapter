@@ -11,7 +11,7 @@ namespace Tebex.Adapters
     public class TebexRconAdapter : BaseTebexAdapter
     {
         public const string Version = "1.0.0-alpha.5";
-        private const string ConfigFilePath = "tebex-config.json";
+        private const string ConfigFilePath = "./tebex-config.json";
 
         private Type? _pluginType;
         private TebexRconPlugin? _plugin;
@@ -45,6 +45,11 @@ namespace Tebex.Adapters
         {
             // Setup log
             var currentPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            if (currentPath.Contains(":")) // linux service path separator 
+            {
+                currentPath = currentPath.Replace(":", "/");
+            }
+
             var logName = $"TebexRcon-{DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")}.log";
             _logger = new StreamWriter(logName, true);
             LogInfo($"Log file is being saved to '{currentPath}{Path.PathSeparator}{logName}'");
