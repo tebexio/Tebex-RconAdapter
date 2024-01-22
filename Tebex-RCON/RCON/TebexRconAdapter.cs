@@ -84,18 +84,37 @@ namespace Tebex.Adapters
 
                 // Connect to RCON after secret key is verified correct
                 LogInfo($" > Connecting to game server at {PluginConfig.RconIp}:{PluginConfig.RconPort} using {Protocol.GetProtocolName()}...");
-                var successful = Protocol.Connect(PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword, true);
-                if (!successful)
+                var successful = false;
+
+                try
                 {
-                    Console.WriteLine();
-                    LogError("Tebex is not running.");
+                    successful = Protocol.Connect(PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword,
+                        true);
+                    if (!successful)
+                    {
+                        Console.WriteLine();
+                        LogWarning("Failed to connect to game server. Tebex is not running.");
+                        return;
+                    }
+                }
+                catch (Exception e)
+                {
+                    LogError("Failed to connect to game server.");
+                    if (e.Message.Contains("Connection refused"))
+                    {
+                        LogError("Connection refused - check that your IP and port are correct and that connection is not being blocked by a firewall.");
+                    }
+                    else
+                    {
+                        LogError(e.ToString());    
+                    }
                     return;
                 }
+                
                 
                 LogInfo(" > Successful connection to the game server!");
                 
                 LogInfo($"Configuring adapter for ${info.AccountInfo.GameType}");
-                
                 // Ensure the game at the RCON endpoint is the one for this account
                 if (!_plugin.AuthenticateGame(info.AccountInfo.GameType))
                 {
@@ -436,7 +455,7 @@ namespace Tebex.Adapters
         {
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             string logMessage = $"[{timestamp}] [{level}] {message}";
-            Console.WriteLine($"{message}");
+            Console.WriteLine($"{logMessage}");
             _logger.WriteLine(logMessage);
             _logger.Flush();
         }
@@ -465,5 +484,10 @@ namespace Tebex.Adapters
         }
         
         #endregion
+
+        public override bool IsConnected()
+        {
+            return Protocol.IsConnected();
+        }
     }
 }
