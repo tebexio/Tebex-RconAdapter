@@ -1,0 +1,21 @@
+$$$$$$$$\        $$\                           
+\__$$  __|       $$ |                          
+   $$ | $$$$$$\  $$$$$$$\   $$$$$$\  $$\   $$\ 
+   $$ |$$  __$$\ $$  __$$\ $$  __$$\ \$$\ $$  |
+   $$ |$$$$$$$$ |$$ |  $$ |$$$$$$$$ | \$$$$  / 
+   $$ |$$   ____|$$ |  $$ |$$   ____| $$  $$<  
+   $$ |\$$$$$$$\ $$$$$$$  |\$$$$$$$\ $$  /\$$\ 
+   \__| \_______|\_______/  \_______|\__/  \__|
+                                               
+                                               
+      This system is running a Tebex image.
+           - TEBEX RCON ADAPTER -
+              https://tebex.io
+
+IMPORTANT SETUP INSTRUCTIONS
+
+1. If you haven't configured this system yet, run `./configure.sh` to set startup args for the RCON Adapter.
+
+2. To start, a systemd service exists `Tebex-RCONAdapter`. Use the provided `./start.sh` and `./stop.sh` scripts or directly run systemctl as needed
+
+
