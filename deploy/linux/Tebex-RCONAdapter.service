@@ -1,0 +1,13 @@
+[Unit]
+Description=Tebex RCON Adapter
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/root/Tebex-RCONAdapter/linux-x64/Tebex-RCON
+Restart=on-failure
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

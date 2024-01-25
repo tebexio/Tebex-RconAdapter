@@ -36,7 +36,7 @@ public abstract class ProtocolManagerBase
     
     public void StartReconnectThread()
     {
-        if (ReconnectOnFail)
+        if (ReconnectOnFail && GetProtocolName() != "battleye") //BattlEye client implements its own reconnect logic
         {
             _reconnectThread = new Thread(ReconnectLoop);
             _reconnectThread.Start();
@@ -52,7 +52,7 @@ public abstract class ProtocolManagerBase
     {
         while (true)
         {
-            if (TcpClient == null || !TcpClient.Connected)
+            if (!GetProtocolName().Equals("battleye") && (TcpClient == null || !TcpClient.Connected))
             {
                 try
                 {
@@ -60,6 +60,7 @@ public abstract class ProtocolManagerBase
                     if (!success)
                     {
                         Console.WriteLine($"RCON connection failed. Trying again in 5 seconds...");
+                        continue;
                     }
 
                     Console.WriteLine("Reconnect succeeded.");

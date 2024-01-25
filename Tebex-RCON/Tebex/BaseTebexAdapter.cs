@@ -33,6 +33,8 @@ namespace Tebex.Adapters
 
         public void DeleteExecutedCommands(bool ignoreWaitCheck = false)
         {
+            if (!IsConnected()) return;
+            
             LogDebug("Deleting executed commands...");
             
             if (!CanProcessNextDeleteCommands() && !ignoreWaitCheck)
@@ -55,7 +57,7 @@ namespace Tebex.Adapters
                 ids.Add(command.Id);
             }
 
-            _nextCheckDeleteCommands = DateTime.Now.AddSeconds(60);
+            _nextCheckDeleteCommands = DateTime.Now.AddSeconds(45);
             TebexApi.Instance.DeleteCommands(ids.ToArray(), (code, body) =>
             {
                 LogInfo("Successfully flushed completed commands.");
@@ -371,6 +373,8 @@ namespace Tebex.Adapters
         
         public void ProcessJoinQueue(bool ignoreWaitCheck = false)
         {
+            if (!IsConnected()) return;
+            
             LogDebug("Processing player join queue...");
             
             if (!CanProcessNextJoinQueue() && !ignoreWaitCheck)
@@ -379,7 +383,7 @@ namespace Tebex.Adapters
                 return;
             }
             
-            _nextCheckJoinQueue = DateTime.Now.AddSeconds(60);
+            _nextCheckJoinQueue = DateTime.Now.AddSeconds(45);
             if (_eventQueue.Count > 0)
             {
                 LogDebug($"  Found {_eventQueue.Count} join events.");
@@ -1000,6 +1004,12 @@ namespace Tebex.Adapters
 
         public void TebexForceCheckCommand()
         {
+            if (!IsConnected())
+            {
+                LogInfo("Tebex is not connected. Force check cannot run without being connected to a server.");
+                return;
+            }
+            
             LogInfo("Forcing check of all Tebex operations...");
             ProcessCommandQueue(true);
             ProcessJoinQueue(true);
@@ -1158,5 +1168,7 @@ namespace Tebex.Adapters
 
             return FalsyStrings.Contains(input.Trim().ToLowerInvariant());
         }
+
+        public abstract bool IsConnected();
     }
 }

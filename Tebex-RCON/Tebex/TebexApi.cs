@@ -18,12 +18,10 @@ namespace Tebex.API
         {
         }
 
-        public void InitAdapter(BaseTebexAdapter adapter, Action? preInit = null, Action? postInit = null)
+        public void InitAdapter(BaseTebexAdapter adapter)
         {
             Adapter = adapter;
-            preInit?.Invoke();
             adapter.Init();
-            postInit?.Invoke();
         }
         
         // Used so that we don't depend on Oxide
@@ -60,13 +58,13 @@ namespace Tebex.API
         public class TebexJoinEventInfo
         {
             [JsonProperty("username_id")] /* steam64ID */
-            public string UsernameId { get; set; }
+            public string UsernameId { get; private set; }
             [JsonProperty("event_type")]
-            public string EventType { get; set; }
+            public string EventType { get; private set; }
             [JsonProperty("event_date")]
-            public DateTime EventDate { get; set; }
+            public DateTime EventDate { get; private set; }
             [JsonProperty("ip")]
-            public string IpAddress { get; set; }
+            public string IpAddress { get; private set; }
 
             public TebexJoinEventInfo(string usernameId, string eventType, DateTime eventDate, string ipAddress)
             {
@@ -213,8 +211,7 @@ namespace Tebex.API
 
         public delegate void Callback(int code, string body);
 
-        public void Information(ApiSuccessCallback success, ApiErrorCallback error = null, ServerErrorCallback serverError = null)
-        {
+        public void Information(ApiSuccessCallback success, ApiErrorCallback error = null, ServerErrorCallback serverError = null) {
             Send("information", "", HttpVerb.GET, success, error, serverError);
         }
 
@@ -281,8 +278,8 @@ namespace Tebex.API
 
         public class CommandConditions
         {
-            [JsonProperty("delay")] public int Delay { get; }
-            [JsonProperty("slots")] public int Slots { get; }
+            [JsonProperty("delay")] public int Delay { get; set;  }
+            [JsonProperty("slots")] public int Slots { get; set; }
         }
 
         public class OfflineCommandsMeta
@@ -299,7 +296,7 @@ namespace Tebex.API
             [JsonProperty("id")] public int Id { get; set; }
             [JsonProperty("command")] public string CommandToRun { get; set; } = "";
             [JsonProperty("payment")] public long Payment { get; set; }
-            [JsonProperty("package")] public long PackageRef { get; set; }
+            [JsonProperty("package", NullValueHandling=NullValueHandling.Ignore)] public long PackageRef { get; set; }
             [JsonProperty("conditions")] public CommandConditions Conditions { get; set; } = new CommandConditions();
             [JsonProperty("player")] public PlayerInfo Player { get; set; }
         }
@@ -711,6 +708,10 @@ namespace Tebex.API
 
             [JsonProperty("meta")] public OnlineCommandPlayerMeta Meta { get; set; }
 
+            /** Only populated by offline commands */
+            [JsonProperty("uuid")]
+            public string Uuid { get; set; } = "";
+            
             [JsonProperty("plugin_username_id")] public int PluginUsernameId { get; set; }
         }
 
@@ -725,6 +726,30 @@ namespace Tebex.API
 
         #region Customer Purchases
 
+        public class PackagePurchaseInfo
+        {
+            [JsonProperty("id")]
+            public int Id { get; set; }
+
+            [JsonProperty("name")]
+            public string Name { get; set; }
+        }
+
+        public class CustomerPackagePurchaseRecord
+        {
+            [JsonProperty("txn_id")]
+            public string TransactionId { get; set; }
+
+            [JsonProperty("date")]
+            public DateTime Date { get; set; }
+
+            [JsonProperty("quantity")]
+            public int Quantity { get; set; }
+
+            [JsonProperty("package")]
+            public PackagePurchaseInfo Package { get; set; }
+        }
+        
         // Return a list of all active (non-expired) packages that a customer has purchased.
         // If packageId is provided, filter down to a single package ID, if you want to check if a specific package has been purchased. 
         public void GetActivePackagesForCustomer(string userId, int? packageId = null,
