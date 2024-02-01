@@ -45,14 +45,16 @@ namespace Tebex.Adapters
         {
             // Setup log
             var currentPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            if (currentPath.Contains(":")) // linux service path separator 
+            char pathSeparator = Path.PathSeparator;
+            if (pathSeparator == ':')
             {
-                currentPath = currentPath.Replace(":", "/");
+                pathSeparator = '/';
             }
-
+            
             var logName = $"TebexRcon-{DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")}.log";
-            _logger = new StreamWriter(logName, true);
-            LogInfo($"Log file is being saved to '{currentPath}{Path.PathSeparator}{logName}'");
+            var logPath = currentPath + pathSeparator + logName;
+            _logger = new StreamWriter(logPath, true);
+            LogInfo($"Log file is being saved to '{currentPath}{pathSeparator}{logName}'");
             
             LogInfo($"Tebex RCON Adapter Client {Version} | https://tebex.io/");
             
