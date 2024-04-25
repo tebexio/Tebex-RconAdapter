@@ -2,7 +2,7 @@
 # Sync the Linux release to a remote server, to build a snapshot image of a basic RCON adapter
 
 SNAPSHOT_SYSTEM="root@addr"
-VERSION="1.0.0-alpha.5"
+VERSION="1.0.0-beta"
 
 # Sync distribution files to the server used for snapshots
 rsync -rv ../../Tebex-RCON/bin/Release/net7.0/linux-x64 $SNAPSHOT_SYSTEM:/root/Tebex-RCONAdapter/
