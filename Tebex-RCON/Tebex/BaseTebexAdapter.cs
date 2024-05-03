@@ -490,6 +490,7 @@ namespace Tebex.Adapters
                             
                             LogInfo($"Executing offline command: `{parsedCommand}`");
                             ExecuteOfflineCommand(command, commandName, args.ToArray());
+                            ExecutedCommands.Add(command);
                         }
                     }, (error) =>
                     {

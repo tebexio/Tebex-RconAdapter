@@ -1,5 +1,10 @@
-﻿using System.Reflection;
+﻿using System;
+using System.IO;
+using System.Net.Http;
+using System.Reflection;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Tebex.API;
 using Tebex.RCON.Protocol;
@@ -10,7 +15,7 @@ namespace Tebex.Adapters
     /** Provides logic that implements some RCON protocol */
     public class TebexRconAdapter : BaseTebexAdapter
     {
-        public const string Version = "1.0.0-alpha.5";
+        public const string Version = "1.0.0";
         private const string ConfigFilePath = "./tebex-config.json";
 
         private Type? _pluginType;
@@ -44,15 +49,17 @@ namespace Tebex.Adapters
         public override void Init()
         {
             // Setup log
-            var currentPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            if (currentPath.Contains(":")) // linux service path separator 
+            var currentPath = AppContext.BaseDirectory;
+            char pathSeparator = Path.PathSeparator;
+            if (pathSeparator == ':')
             {
-                currentPath = currentPath.Replace(":", "/");
+                pathSeparator = '/';
             }
-
+            
             var logName = $"TebexRcon-{DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")}.log";
-            _logger = new StreamWriter(logName, true);
-            LogInfo($"Log file is being saved to '{currentPath}{Path.PathSeparator}{logName}'");
+            var logPath = currentPath + pathSeparator + logName;
+            _logger = new StreamWriter(logPath, true);
+            LogInfo($"Log file is being saved to '{currentPath}{pathSeparator}{logName}'");
             
             LogInfo($"Tebex RCON Adapter Client {Version} | https://tebex.io/");
             

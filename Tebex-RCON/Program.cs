@@ -163,13 +163,30 @@ foreach (var plugName in pluginsAvailable)
 // Handle bad plugin type selection
 if (pluginType == null)
 {
-    Console.WriteLine($"No plugin for game '{startupGame}', please provide your desired plugin as a launch argument: ");
+    Console.WriteLine($"No plugin for game '{startupGame}', please provide your desired plugin as a launch argument or enter it below: ");
     Console.WriteLine("Available plugins: ");
     foreach (var plugName in pluginsAvailable)
     {
         Console.WriteLine($" - '{plugName}'");
     }
-    return;
+    
+    Console.WriteLine("Enter which plugin you want to run: ");
+    
+    while (true) // Ask the user which plugin to run until they quit.
+    {
+        Console.Write("Tebex> ");
+        var desiredPlugin = Console.ReadLine();
+        if (desiredPlugin != null && pluginsAvailable.Contains(desiredPlugin))
+        {
+            startupGame = desiredPlugin;
+            break;
+        }
+
+        if (desiredPlugin != null && desiredPlugin.Equals("exit"))
+        {
+            return;
+        }
+    }
 }
 
 // Check command line flags

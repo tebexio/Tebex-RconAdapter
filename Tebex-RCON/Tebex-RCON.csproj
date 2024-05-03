@@ -6,8 +6,8 @@
         <TargetFramework>net7.0</TargetFramework>
         <RootNamespace>Tebex_RCON</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
-        <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
-        <PublishSingleFile>false</PublishSingleFile>
+        <RuntimeIdentifiers>win-x64;linux-x64;osx-x64</RuntimeIdentifiers>
+        <PublishSingleFile>true</PublishSingleFile>
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
