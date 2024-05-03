@@ -1,5 +1,10 @@
-﻿using System.Reflection;
+﻿using System;
+using System.IO;
+using System.Net.Http;
+using System.Reflection;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Tebex.API;
 using Tebex.RCON.Protocol;
@@ -44,7 +49,7 @@ namespace Tebex.Adapters
         public override void Init()
         {
             // Setup log
-            var currentPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var currentPath = AppContext.BaseDirectory;
             char pathSeparator = Path.PathSeparator;
             if (pathSeparator == ':')
             {
