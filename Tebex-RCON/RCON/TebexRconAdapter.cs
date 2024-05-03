@@ -10,7 +10,7 @@ namespace Tebex.Adapters
     /** Provides logic that implements some RCON protocol */
     public class TebexRconAdapter : BaseTebexAdapter
     {
-        public const string Version = "1.0.0-alpha.5";
+        public const string Version = "1.0.0";
         private const string ConfigFilePath = "./tebex-config.json";
 
         private Type? _pluginType;
