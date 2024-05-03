@@ -5,6 +5,8 @@
 
 .DS_STORE
 .idea/
+deploy/linux/
+deploy/windows/
 
 # User-specific files
 *.rsuser
