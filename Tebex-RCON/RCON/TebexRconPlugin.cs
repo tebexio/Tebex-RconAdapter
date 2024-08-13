@@ -1,5 +1,6 @@
 ﻿using Tebex.Adapters;
 using Tebex.RCON;
+using Tebex.Triage;
 
 namespace Tebex.RCON.Protocol
 {
@@ -19,12 +20,17 @@ namespace Tebex.RCON.Protocol
 
         public string GetPluginVersion()
         {
-            return "0.0.1";
+            return "1.1.0";
         }
         
         public BaseTebexAdapter GetAdapter()
         {
             return _adapter;
+        }
+        
+        public TebexPlatform GetPlatform()
+        {
+            return new TebexPlatform(GetPluginVersion(), new TebexTelemetry("RCON-Adapter", GetPluginVersion(), _protocolManager.GetProtocolName()));
         }
         
         public abstract void ReplyPlayer(string playerId, string player);

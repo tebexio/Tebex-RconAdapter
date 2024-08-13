@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using Tebex.Adapters;
 
@@ -211,8 +213,9 @@ namespace Tebex.API
 
         public delegate void Callback(int code, string body);
 
-        public void Information(ApiSuccessCallback success, ApiErrorCallback error = null, ServerErrorCallback serverError = null) {
-            Send("information", "", HttpVerb.GET, success, error, serverError);
+        public void Information(ApiSuccessCallback success, ApiErrorCallback error = null)
+        {
+            Send("information", "", HttpVerb.GET, success, error);
         }
 
         #endregion
@@ -296,7 +299,7 @@ namespace Tebex.API
             [JsonProperty("id")] public int Id { get; set; }
             [JsonProperty("command")] public string CommandToRun { get; set; } = "";
             [JsonProperty("payment")] public long Payment { get; set; }
-            [JsonProperty("package", NullValueHandling=NullValueHandling.Ignore)] public long PackageRef { get; set; }
+            [JsonProperty(NullValueHandling=NullValueHandling.Ignore)] public long PackageRef { get; set; }
             [JsonProperty("conditions")] public CommandConditions Conditions { get; set; } = new CommandConditions();
             [JsonProperty("player")] public PlayerInfo Player { get; set; }
         }

@@ -1,10 +1,4 @@
-﻿using System;
-using System.IO;
-using System.Net.Http;
-using System.Reflection;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Text;
 using Newtonsoft.Json;
 using Tebex.API;
 using Tebex.RCON.Protocol;
@@ -15,7 +9,7 @@ namespace Tebex.Adapters
     /** Provides logic that implements some RCON protocol */
     public class TebexRconAdapter : BaseTebexAdapter
     {
-        public const string Version = "1.0.0";
+        public const string Version = "1.1.0";
         private const string ConfigFilePath = "./tebex-config.json";
 
         private Type? _pluginType;
@@ -80,7 +74,7 @@ namespace Tebex.Adapters
             // If no secret key is set, assume we need to run setup and collect info from the user.
             if (PluginConfig.SecretKey == "")
             {
-                LogWarning("Your webstore's secret key has not been configured yet.");
+                LogWarning("Your webstore's secret key has not been configured yet.", "Initiating setup...");
                 DoSetup();
             }
 
@@ -105,7 +99,7 @@ namespace Tebex.Adapters
                     if (!successful)
                     {
                         Console.WriteLine();
-                        LogWarning("Failed to connect to game server. Tebex is not running.");
+                        LogWarning("Failed to connect to game server. Tebex is not running.", "Check that your RCON connection parameters are correct, and try again.");
                         return;
                     }
                 }
@@ -139,14 +133,6 @@ namespace Tebex.Adapters
                 
                 Protocol.StartReconnectThread();
                 _isReady = true;
-            }, (tebexError) =>
-            {
-                LogError($"{tebexError.ErrorMessage}");
-                LogWarning("Tebex is not running.");
-            }, (code, response) =>
-            {
-                LogError($"An unexpected server error occurred with code {code}: {response}");
-                LogWarning("Tebex is not running.");
             });
 
             // Setup timed functions
@@ -266,7 +252,7 @@ namespace Tebex.Adapters
             throw new NotImplementedException();
         }
 
-        public override void ExecuteOfflineCommand(TebexApi.Command command, string commandName, string[] args)
+        public override void ExecuteOfflineCommand(TebexApi.Command command, object playerObj, string commandName, string[] args)
         {
             var rconCommand = command.CommandToRun;
             ExpandOfflineVariables(rconCommand, command.Player);
@@ -290,17 +276,25 @@ namespace Tebex.Adapters
             }
         }
 
-        public override void ExecuteOnlineCommand(TebexApi.Command command, object playerObj, string commandName, string[] args)
+        public override bool ExecuteOnlineCommand(TebexApi.Command command, TebexApi.DuePlayer player, string commandName, string[] args)
         {
             LogInfo("Executing online command...");
             
-            var cmd = ExpandUsernameVariables(command.CommandToRun, playerObj);
-            cmd = _plugin.ExpandGameUsernameVariables(cmd, playerObj);
+            var cmd = ExpandUsernameVariables(command.CommandToRun, player);
+            cmd = _plugin.ExpandGameUsernameVariables(cmd, player);
             
             LogInfo($"> Executing online command: {cmd}");
             Protocol.Write(cmd);
             var response = Protocol.Read(); //SendCommandAndReadResponse(2, cmd);
             LogInfo($"> Server responded: '{response}'");
+
+            var lowerResponse = response.ToLower();
+            if (lowerResponse.Contains("error") || lowerResponse.Contains("invalid") || lowerResponse.Contains("unknown item") || lowerResponse.Contains("failed")) // loosely attempt to determine if we succeeded
+            {
+                return false;
+            }
+            
+            return true; // successful command
         }
 
         public override bool IsPlayerOnline(string playerRefId)
@@ -313,13 +307,12 @@ namespace Tebex.Adapters
             return _plugin.GetPlayerRef(playerId);
         }
 
-        public override string ExpandUsernameVariables(string input, object playerObj)
+        public override string ExpandUsernameVariables(string input, TebexApi.DuePlayer player)
         {
-            // playerObj will be integer of player position/idx in /listplayers list.
-            // This var is assigned prior by GetPlayerRef.
-            input = input.Replace("{id}", playerObj.ToString());
-            input = input.Replace("{username}", playerObj.ToString());
-            return input;
+            string parsed = input;
+            parsed = parsed.Replace("{id}", player.UUID);
+            parsed = parsed.Replace("{username}", player.Name);
+            return parsed;
         }
 
         public override string ExpandOfflineVariables(string input, TebexApi.PlayerInfo info)
@@ -409,17 +402,7 @@ namespace Tebex.Adapters
                 onServerError?.Invoke(0, ex.Message);
             }
         }
-
-        public override TebexTriage.AutoTriageEvent FillAutoTriageParameters(TebexTriage.AutoTriageEvent partialEvent)
-        {
-            partialEvent.GameId = $"{_plugin.GetGameName()}";
-            partialEvent.FrameworkId = "RCONAdapter";
-            partialEvent.PluginVersion = _plugin.GetPluginVersion();
-            partialEvent.ServerIp = Protocol.GetIpAndPort();
-            
-            return partialEvent;
-        }
-
+        
         #region Threading
         public static async void ExecuteEvery(TimeSpan interval, Action action)
         {
@@ -472,9 +455,20 @@ namespace Tebex.Adapters
             _logger.Flush();
         }
         
-        public override void LogWarning(string message)
+        public override void LogWarning(string message, string solution)
         {
             Log(message, LogLevel.Warning);
+        }
+
+        public override void LogWarning(string message, string solution, Dictionary<String, String> metadata)
+        {
+            Log(message, LogLevel.Warning);
+            Log("- " + solution, LogLevel.Warning);
+
+            if (PluginConfig.AutoReportingEnabled)
+            {
+                new PluginEvent(_plugin, _plugin.GetPlatform(), EnumEventLevel.WARNING, message).WithMetadata(metadata).Send(this);
+            }
         }
 
         public override void LogError(string message)
@@ -482,6 +476,15 @@ namespace Tebex.Adapters
             Log(message, LogLevel.Error);
         }
 
+        public override void LogError(string message, Dictionary<String, String> metadata)
+        {
+            Log(message, LogLevel.Error);
+            if (PluginConfig.AutoReportingEnabled)
+            {
+                new PluginEvent(_plugin, _plugin.GetPlatform(), EnumEventLevel.ERROR, message).WithMetadata(metadata).Send(this);
+            }
+        }
+        
         public override void LogInfo(string message)
         {
             Log(message, LogLevel.Info);

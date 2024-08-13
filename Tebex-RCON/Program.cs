@@ -22,7 +22,10 @@ Dictionary<string, Type> pluginTypes = new Dictionary<string, Type>()
     {"7d2d", typeof(SevenDaysPlugin) },
     {"conanexiles", typeof(ConanExilesPlugin) },
     {"dayz", typeof(DayZPlugin) },
-    {"projectzomboid", typeof(ProjectZomboidPlugin)}
+    {"projectzomboid", typeof(ProjectZomboidPlugin)},
+    {"minecraft", typeof(MinecraftPlugin)},
+    {"arkse", typeof(ArkPlugin)},
+    {"rust", typeof(RustPlugin)}
 };
 
 List<string> pluginsAvailable = pluginTypes.Keys.ToList();
@@ -204,6 +207,11 @@ if (arguments.Contains("--battleye") || startupGame.Equals("dayz"))
 {
     protocolManager = new BattleNetProtocolManager();
     System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+}
+
+if (startupGame.Equals("minecraft"))
+{
+    protocolManager = new MinecraftProtocolManager();
 }
 
 // Initialize the adapter's protocol and plugin type, then the API will initialize and boot the adapter.
