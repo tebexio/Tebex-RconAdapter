@@ -64,7 +64,15 @@ namespace Tebex.RCON.Protocol
 
         public override string ToString()
         {
-            return $"id: {this._id} | type: {this.PacketType} | message: {this._message} | size: {this._size} bytes";
+            if (this.PacketType == Type.LoginRequest)
+            {
+                return $"id: {this._id} | type: {this.PacketType} | message: **password** | size: {this._size} bytes";
+            }
+            else
+            {
+                return $"id: {this._id} | type: {this.PacketType} | message: {this._message} | size: {this._size} bytes";    
+            }
+            
         }
     }
 }

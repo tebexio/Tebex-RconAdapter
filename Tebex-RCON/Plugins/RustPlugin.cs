@@ -7,10 +7,10 @@ namespace Tebex.Plugins
     {
         public RustPlugin(ProtocolManagerBase protocolManager, BaseTebexAdapter adapter) : base(protocolManager, adapter)
         {
-            new Thread(() =>
-            {
-                _protocolManager.PollRconMessages();    
-            }).Start();
+            // new Thread(() =>
+            // {
+            //     _protocolManager.PollRconMessages();    
+            // }).Start();
         }
         
         public override string GetGameName()
@@ -27,7 +27,7 @@ namespace Tebex.Plugins
         {
             _protocolManager.EnablePolling = false;
             
-            _protocolManager.Write("listplayers");
+            _protocolManager.Write("quit");
 
 
             bool found = false;
@@ -57,31 +57,11 @@ namespace Tebex.Plugins
         
         public override bool AuthenticateGame(string gameType)
         {
-            // expect "Please enter password"
-            var message = _protocolManager.Read();
-            if (message != null && message.Contains("enter password"))
-            {
-                if (TebexRconAdapter.PluginConfig.RconPassword == "")
-                {
-                    _adapter.LogInfo("This server requires a password. Please configure your password in tebex-config.json or run `tebex.setup`.");
-                    return false;
-                }
-                
-                // we will be prompted for a password first if enabled
-                
-                _protocolManager.Write(TebexRconAdapter.PluginConfig.RconPassword);
-                
-                // expect "Logon successful"
-                message = _protocolManager.Read();
-                if (!message.Contains("successful"))
-                {
-                    _adapter.LogInfo("The server did not accept our password. Please try again.");
-                    return false;
-                }
-            }
+            _protocolManager.EnablePolling = false;
             
+            WebsocketProtocolManager protocol = (WebsocketProtocolManager)_protocolManager;
 
-            // Polling starts disabled for 7 Days until we successfully connect with the server.
+            protocol.Write("quit");
             _protocolManager.EnablePolling = true;
             return true;
         }

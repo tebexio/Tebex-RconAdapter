@@ -183,7 +183,7 @@ namespace Tebex.Adapters
         /**
              * Returns the store's /information payload. Info is cached according to configured cache lifetime.
              */
-        public void FetchStoreInfo(FetchStoreInfoResponse response)
+        public void FetchStoreInfo(FetchStoreInfoResponse response, TebexApi.ApiErrorCallback apiErrorCallback)
         {
             if (Cache.Instance.HasValid("information"))
             {
@@ -205,7 +205,7 @@ namespace Tebex.Adapters
 
                     Cache.Instance.Set("information", new CachedObject(storeInfo, PluginConfig.CacheLifetime));
                     response?.Invoke(storeInfo);
-                });
+                }, apiErrorCallback);
             }
         }
 
@@ -366,7 +366,10 @@ namespace Tebex.Adapters
             }
             
             _nextCheckRefresh = DateTime.Now.AddMinutes(15);
-            FetchStoreInfo(info => { });
+            FetchStoreInfo(info => { }, (error) =>
+            {
+                LogError("Error while refreshing store information: " + error.ErrorMessage);
+            });
         }
         
         public void ProcessJoinQueue(bool ignoreWaitCheck = false)
@@ -847,12 +850,15 @@ namespace Tebex.Adapters
             Cache.Instance.Remove("information");
 
             // Any failure to set secret key is logged to console automatically
+            bool errored = false;
             FetchStoreInfo(info =>
             {
                 LogInfo($"This server is now registered as server {info.ServerInfo.Name} for the web store {info.AccountInfo.Name}");
+                SaveConfig(PluginConfig);
+            }, (error) =>
+            {
+                LogError("Failed to get store information using your key: " + error.ErrorMessage);
             });
-            
-            SaveConfig(PluginConfig);
         }
 
         public void TebexInfoCommand()
@@ -863,6 +869,9 @@ namespace Tebex.Adapters
                 LogInfo($" > {info.ServerInfo.Name} for webstore {info.AccountInfo.Name}");
                 LogInfo($" > Server prices are in {info.AccountInfo.Currency.Iso4217}");
                 LogInfo($" > Webstore domain {info.AccountInfo.Domain}");
+            }, (error) =>
+            {
+                LogInfo("Error retrieving store info: " + error.ErrorMessage);
             });
         }
 
@@ -908,8 +917,9 @@ namespace Tebex.Adapters
                 Console.WriteLine("> Secret key set successfully");
                 Console.WriteLine();
                 SaveConfig(PluginConfig);
-                //FIXME
-                /*SetupRCONConnection();*/
+            }, error =>
+            {
+                Console.WriteLine("> Error while checking secret key: " + error.ErrorMessage);
             });
         }
         

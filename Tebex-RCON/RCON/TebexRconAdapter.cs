@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using Tebex.API;
 using Tebex.RCON.Protocol;
 using Tebex.Triage;
+using Tebex.Util;
 
 namespace Tebex.Adapters
 {
@@ -39,6 +40,21 @@ namespace Tebex.Adapters
 
             return cfg;
         }
+
+        private String Success(String message)
+        {
+            return $"[ {Ansi.Green("\u2713")} ] " + message;
+        }
+
+        private String Error(String message)
+        {
+            return $"[ {Ansi.Red("X")} ] " + message;
+        }
+
+        private String Warn(String message)
+        {
+            return $"[ {Ansi.Yellow("\u26a0")} ] " + message;
+        }
         
         public override void Init()
         {
@@ -53,9 +69,8 @@ namespace Tebex.Adapters
             var logName = $"TebexRcon-{DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")}.log";
             var logPath = currentPath + pathSeparator + logName;
             _logger = new StreamWriter(logPath, true);
-            LogInfo($"Log file is being saved to '{currentPath}{pathSeparator}{logName}'");
-            
-            LogInfo($"Tebex RCON Adapter Client {Version} | https://tebex.io/");
+            LogInfo(Ansi.White($"Log file is being saved to '{currentPath}{pathSeparator}{logName}'"));
+            LogInfo($"{Ansi.Yellow("Tebex RCON Adapter Client " + Version)} | {Ansi.Blue(Ansi.Underline("https://tebex.io"))}");
             
             // This will be set if we have enough vars from either startup arguments or environment variables
             // for the adapter to attempt to start.
@@ -78,90 +93,82 @@ namespace Tebex.Adapters
                 DoSetup();
             }
 
-            Console.WriteLine();
-            LogInfo("Verifying your secret key...");
             FetchStoreInfo(info =>
             {
-                LogInfo($" > 'Server: {info.ServerInfo.Name}' 'Account: {info.AccountInfo.Name}'");
-                Console.WriteLine();
+                LogInfo(Success("Connected to Tebex store: " + info.AccountInfo.Name));
                 
-                LogInfo($"Loading game server plugin '{_pluginType}'...");
+                //LogInfo($"Loading game server plugin '{_pluginType}'...");
                 _plugin = Activator.CreateInstance(_pluginType, Protocol, this) as TebexRconPlugin;
 
                 // Connect to RCON after secret key is verified correct
-                LogInfo($" > Connecting to game server at {PluginConfig.RconIp}:{PluginConfig.RconPort} using {Protocol.GetProtocolName()}...");
+                //LogInfo($" > Connecting to game server at {PluginConfig.RconIp}:{PluginConfig.RconPort} using {Protocol.GetProtocolName()}...");
                 var successful = false;
-
                 try
                 {
                     successful = Protocol.Connect(PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword,
                         true);
                     if (!successful)
                     {
-                        Console.WriteLine();
+                        LogError("Failed to connect to game server. Tebex is not running. Check that your RCON IP and port are correct.");
                         LogWarning("Failed to connect to game server. Tebex is not running.", "Check that your RCON connection parameters are correct, and try again.");
                         return;
                     }
+                    
+                    // Setup timed functions
+                    ExecuteEvery(TimeSpan.FromSeconds(45), () =>
+                    {
+                        if (Protocol != null && Protocol.IsConnected())
+                        {
+                            ProcessCommandQueue(false);    
+                        }
+                    });
+            
+                    ExecuteEvery(TimeSpan.FromSeconds(45), () =>
+                    {
+                        DeleteExecutedCommands(false);
+                    });
+            
+                    ExecuteEvery(TimeSpan.FromSeconds(45), () =>
+                    {
+                        ProcessJoinQueue(false);
+                    });
                 }
                 catch (Exception e)
                 {
-                    LogError("Failed to connect to game server.");
                     if (e.Message.Contains("Connection refused"))
                     {
-                        LogError("Connection refused - check that your IP and port are correct and that connection is not being blocked by a firewall.");
+                        LogError(Error("RCON connection refused - check that your IP and port are correct and that connection is not being blocked by a firewall."));
                     }
                     else
                     {
-                        LogError(e.ToString());    
+                        LogError(Error("Could not connect to game server RCON: " + e));    
                     }
                     return;
                 }
                 
+                LogInfo(Success("Connected to RCON server at " + PluginConfig.RconIp + ":" + PluginConfig.RconPort));
+                LogInfo(Success("Tebex is ready. Packages will automatically be delivered to your game server. We will attempt to reconnect if the server goes offline."));
+
+                Console.WriteLine("Enter 'tebex.help' for a list of available commands. Non-Tebex commands will be passed to your game server.");
                 
-                LogInfo(" > Successful connection to the game server!");
-                
-                LogInfo($"Configuring adapter for ${info.AccountInfo.GameType}");
-                // Ensure the game at the RCON endpoint is the one for this account
-                if (!_plugin.AuthenticateGame(info.AccountInfo.GameType))
-                {
-                    LogError($" > It does not appear that the server we connected to is a {info.AccountInfo.GameType} server");
-                    LogError($" > Please check your secret key and store settings.");
-                    Environment.Exit(1);
-                    return;
-                }
-                LogInfo(" > Adapter configured successfully!");
+                // LogInfo($"Configuring adapter for {info.AccountInfo.GameType}");
+                // // Ensure the game at the RCON endpoint is the one for this account
+                // if (!_plugin.AuthenticateGame(info.AccountInfo.GameType))
+                // {
+                //     LogError($" > It does not appear that the server we connected to is a {info.AccountInfo.GameType} server");
+                //     LogError($" > Please check your secret key and store settings.");
+                //     Environment.Exit(1);
+                //     return;
+                // }
+                // LogInfo(" > Adapter configured successfully!");
                 
                 Protocol.StartReconnectThread();
                 _isReady = true;
-            });
-
-            // Setup timed functions
-            ExecuteEvery(TimeSpan.FromSeconds(45), () =>
+            }, error =>
             {
-                if (Protocol != null && Protocol.IsConnected())
-                {
-                    ProcessCommandQueue(false);    
-                }
+                LogError(Error("Failed to connect to Tebex: " + error.ErrorMessage));
+                LogInfo("Use `tebex.secret` to set your secret key.");
             });
-            
-            ExecuteEvery(TimeSpan.FromSeconds(45), () =>
-            {
-                DeleteExecutedCommands(false);
-            });
-            
-            ExecuteEvery(TimeSpan.FromSeconds(45), () =>
-            {
-                ProcessJoinQueue(false);
-            });
-            
-            /*
-            ExecuteEvery(TimeSpan.FromMinutes(30), () =>
-            {
-                RefreshStoreInformation(false);
-            });*/
-            
-            Console.WriteLine("Type 'tebex.help' for a list of commands.");
-            Console.WriteLine("");
         }
 
         public void SetStartupArguments(string key, string host, string port, string auth, string debug)

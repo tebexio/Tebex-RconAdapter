@@ -2,6 +2,7 @@
 using Tebex.API;
 using Tebex.Plugins;
 using Tebex.RCON.Protocol;
+using Tebex.Util;
 
 // Init startup variables
 TebexRconAdapter adapter = new TebexRconAdapter();
@@ -14,7 +15,7 @@ var startupGame = "";
 var startupHost = "";
 var startupPort = "";
 var startupPass = "";
-var startupDebug = "";
+var startupDebug = "false";
 
 // Dictionary containing valid plugin types that are available
 Dictionary<string, Type> pluginTypes = new Dictionary<string, Type>()
@@ -177,7 +178,7 @@ if (pluginType == null)
     
     while (true) // Ask the user which plugin to run until they quit.
     {
-        Console.Write("Tebex> ");
+        Console.Write(Ansi.Blue("Tebex>> "));
         var desiredPlugin = Console.ReadLine();
         if (desiredPlugin != null && pluginsAvailable.Contains(desiredPlugin))
         {
@@ -209,9 +210,19 @@ if (arguments.Contains("--battleye") || startupGame.Equals("dayz"))
     System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 }
 
-if (startupGame.Equals("minecraft"))
+if (startupGame.Equals("minecraft") || startupGame.Equals("arkse"))
 {
     protocolManager = new MinecraftProtocolManager();
+}
+
+if (startupGame.Equals("arkse"))
+{
+    protocolManager = new ArkSeProtocolManager();
+}
+
+if (startupGame.Equals("rust"))
+{
+    protocolManager = new WebsocketProtocolManager();
 }
 
 // Initialize the adapter's protocol and plugin type, then the API will initialize and boot the adapter.
@@ -231,7 +242,7 @@ while (true)
         continue;
     }
     
-    Console.Write("Tebex> ");
+    Console.Write(Ansi.Blue("Tebex>> "));
     var input = Console.ReadLine();
 
     if (string.IsNullOrEmpty(input)) continue;
