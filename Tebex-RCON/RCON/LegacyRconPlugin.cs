@@ -7,15 +7,15 @@ namespace Tebex.RCON.Protocol
     /**
      * Implements game or protocol-specific actions using the RCON adapter
      */
-    public abstract class TebexRconPlugin
+    public abstract class LegacyRconPlugin
     {
-        protected ProtocolManagerBase _protocolManager;
+        protected LegacyProtocolManager _protocol;
         protected BaseTebexAdapter _adapter;
-        public TebexRconPlugin(ProtocolManagerBase protocolManager, BaseTebexAdapter adapter)
+        public LegacyRconPlugin(LegacyProtocolManager protocol, BaseTebexAdapter adapter)
         {
             _adapter = adapter;
-            _protocolManager = protocolManager;
-            _protocolManager.SetMessageListener(this);
+            _protocol = protocol;
+            _protocol.SetMessageListener(this);
         }
 
         public string GetPluginVersion()
@@ -30,7 +30,7 @@ namespace Tebex.RCON.Protocol
         
         public TebexPlatform GetPlatform()
         {
-            return new TebexPlatform(GetPluginVersion(), new TebexTelemetry("RCON-Adapter", GetPluginVersion(), _protocolManager.GetProtocolName()));
+            return new TebexPlatform(GetPluginVersion(), new TebexTelemetry("RCON-Adapter", GetPluginVersion(), _protocol.GetProtocolName()));
         }
         
         public abstract void ReplyPlayer(string playerId, string player);

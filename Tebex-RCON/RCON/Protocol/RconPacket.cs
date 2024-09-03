@@ -14,14 +14,13 @@ namespace Tebex.RCON.Protocol
         private int _id;
         private Type _type;
         private string _message;
-        private int _size;
 
         public int Id
         {
             get => _id;
             set => _id = value;
         }
-
+        
         public Type PacketType
         {
             get => _type;
@@ -41,36 +40,22 @@ namespace Tebex.RCON.Protocol
             set => _message = value ?? throw new ArgumentNullException(nameof(Message));
         }
 
-        public int Size
-        {
-            get => _size;
-            set
-            {
-                if (value < 0)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(Size), "Size cannot be negative.");
-                }
-                _size = value;
-            }
-        }
-
-        public RconPacket(int id, int responseType, string message, int size)
+        public RconPacket(int id, Type responseType, string message)
         {
             Id = id;
-            PacketType = (Type)responseType;
+            PacketType = responseType;
             Message = message;
-            Size = size;
         }
 
         public override string ToString()
         {
             if (this.PacketType == Type.LoginRequest)
             {
-                return $"id: {this._id} | type: {this.PacketType} | message: **password** | size: {this._size} bytes";
+                return $"id: {this._id} | type: {this.PacketType} | msg: **password**";
             }
             else
             {
-                return $"id: {this._id} | type: {this.PacketType} | message: {this._message} | size: {this._size} bytes";    
+                return $"id: {this._id} | type: {this.PacketType} | msg: {this._message}";    
             }
             
         }

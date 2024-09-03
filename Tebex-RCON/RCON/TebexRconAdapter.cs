@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using Newtonsoft.Json;
 using Tebex.API;
+using Tebex.Plugins;
 using Tebex.RCON.Protocol;
 using Tebex.Triage;
 using Tebex.Util;
@@ -10,13 +11,22 @@ namespace Tebex.Adapters
     /** Provides logic that implements some RCON protocol */
     public class TebexRconAdapter : BaseTebexAdapter
     {
+        public Dictionary<string, Type> PLUGINS = new Dictionary<string, Type>()
+        {
+            {"Minecraft: Java Edition", typeof(MinecraftPlugin)},
+            {"ARK: Survival Evolved", typeof(ArkPlugin)},
+            {"Rust", typeof(RustPlugin)},
+            {"7 Days To Die", typeof(SevenDaysPlugin)},
+            {"Conan Exiles", typeof(ConanExilesPlugin)},
+        };
+        
         public const string Version = "1.1.0";
         private const string ConfigFilePath = "./tebex-config.json";
 
         private Type? _pluginType;
-        private TebexRconPlugin? _plugin;
-        protected static ProtocolManagerBase? Protocol;
-        
+        private RconPlugin? _plugin;
+        //protected static ProtocolManagerBase? Protocol;
+        private RconConnection? _rcon;
         private TextWriter? _logger;
         private static bool _isReady = false;
 
@@ -41,17 +51,27 @@ namespace Tebex.Adapters
             return cfg;
         }
 
-        private String Success(String message)
+        public RconConnection GetRcon()
+        {
+            return _rcon;
+        }
+
+        public override bool IsConnected()
+        {
+            return _isReady;
+        }
+        
+        public string Success(String message)
         {
             return $"[ {Ansi.Green("\u2713")} ] " + message;
         }
 
-        private String Error(String message)
+        public string Error(String message)
         {
             return $"[ {Ansi.Red("X")} ] " + message;
         }
 
-        private String Warn(String message)
+        public string Warn(String message)
         {
             return $"[ {Ansi.Yellow("\u26a0")} ] " + message;
         }
@@ -95,32 +115,57 @@ namespace Tebex.Adapters
 
             FetchStoreInfo(info =>
             {
-                LogInfo(Success("Connected to Tebex store: " + info.AccountInfo.Name));
+                LogInfo(Success($"Validated Tebex store {Ansi.Blue(info.AccountInfo.Name)} running game type {Ansi.Blue(info.AccountInfo.GameType)}"));
                 
-                //LogInfo($"Loading game server plugin '{_pluginType}'...");
-                _plugin = Activator.CreateInstance(_pluginType, Protocol, this) as TebexRconPlugin;
-
-                // Connect to RCON after secret key is verified correct
-                //LogInfo($" > Connecting to game server at {PluginConfig.RconIp}:{PluginConfig.RconPort} using {Protocol.GetProtocolName()}...");
-                var successful = false;
+                String gameType = info.AccountInfo.GameType;
+                
+                // Attempt to create plugin
                 try
                 {
-                    successful = Protocol.Connect(PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword,
-                        true);
-                    if (!successful)
+                    _plugin = Activator.CreateInstance(PLUGINS[gameType], this) as RconPlugin;
+                }
+                catch (Exception e)
+                {
+                    Error(e.Message);
+                }
+
+                if (_plugin == null)
+                {
+                    LogWarning(Warn($"We do not support enhanced RCON for '{gameType}'."),
+                        "Commands will be sent, but game-specific features such as players online will be disabled.");
+                }
+                else
+                {
+                    LogInfo(Success("Loaded Tebex RCON plugin for " + gameType + ". Enhanced RCON support is enabled."));
+                }
+                
+                
+                // Connect to RCON after secret key is verified correct
+                try
+                {
+                    if (_plugin != null)
                     {
-                        LogError("Failed to connect to game server. Tebex is not running. Check that your RCON IP and port are correct.");
-                        LogWarning("Failed to connect to game server. Tebex is not running.", "Check that your RCON connection parameters are correct, and try again.");
-                        return;
+                        _rcon = _plugin.CreateRconConnection(this, PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword);                        
+                    }
+                    else
+                    {
+                        _rcon = new RconConnection(this, PluginConfig.RconIp, PluginConfig.RconPort,
+                            PluginConfig.RconPassword);
                     }
                     
+                    LogInfo($"Connecting to RCON server at {PluginConfig.RconIp}:{PluginConfig.RconPort} using {_rcon.GetType().Name}...");
+                    Tuple<bool, string> connectResult = _rcon.Connect();
+                    if (!connectResult.Item1)
+                    {
+                        LogError(Error($"{connectResult.Item2}. Check that your RCON connection parameters are correct, and try again."));
+                        Environment.Exit(1);
+                        return;
+                    }
+
                     // Setup timed functions
                     ExecuteEvery(TimeSpan.FromSeconds(45), () =>
-                    {
-                        if (Protocol != null && Protocol.IsConnected())
-                        {
-                            ProcessCommandQueue(false);    
-                        }
+                    { 
+                        ProcessCommandQueue(false);
                     });
             
                     ExecuteEvery(TimeSpan.FromSeconds(45), () =>
@@ -135,14 +180,7 @@ namespace Tebex.Adapters
                 }
                 catch (Exception e)
                 {
-                    if (e.Message.Contains("Connection refused"))
-                    {
-                        LogError(Error("RCON connection refused - check that your IP and port are correct and that connection is not being blocked by a firewall."));
-                    }
-                    else
-                    {
-                        LogError(Error("Could not connect to game server RCON: " + e));    
-                    }
+                    LogError(Error("Could not connect to game server RCON: " + e));
                     return;
                 }
                 
@@ -150,19 +188,6 @@ namespace Tebex.Adapters
                 LogInfo(Success("Tebex is ready. Packages will automatically be delivered to your game server. We will attempt to reconnect if the server goes offline."));
 
                 Console.WriteLine("Enter 'tebex.help' for a list of available commands. Non-Tebex commands will be passed to your game server.");
-                
-                // LogInfo($"Configuring adapter for {info.AccountInfo.GameType}");
-                // // Ensure the game at the RCON endpoint is the one for this account
-                // if (!_plugin.AuthenticateGame(info.AccountInfo.GameType))
-                // {
-                //     LogError($" > It does not appear that the server we connected to is a {info.AccountInfo.GameType} server");
-                //     LogError($" > Please check your secret key and store settings.");
-                //     Environment.Exit(1);
-                //     return;
-                // }
-                // LogInfo(" > Adapter configured successfully!");
-                
-                Protocol.StartReconnectThread();
                 _isReady = true;
             }, error =>
             {
@@ -222,32 +247,33 @@ namespace Tebex.Adapters
             }
         }
         
-        public ProtocolManagerBase? GetProtocol()
-        {
-            return Protocol;
-        }
+        // public ProtocolManagerBase? GetProtocol()
+        // {
+        //     return Protocol;
+        // }
+        //
+        // public void SetProtocol(ProtocolManagerBase protocol)
+        // {
+        //     LogDebug($"Using {protocol.GetProtocolName()} protocol");
+        //     Protocol = protocol;
+        // }
 
-        public void SetProtocol(ProtocolManagerBase protocol)
-        {
-            LogDebug($"Using {protocol.GetProtocolName()} protocol");
-            Protocol = protocol;
-        }
-
-        public TebexRconPlugin GetPlugin()
-        {
-            return _plugin;
-        }
-
-        public void SetPluginType(Type type)
-        {
-            _pluginType = type;
-        }
+        // public TebexRconPlugin GetPlugin()
+        // {
+        //     return _plugin;
+        // }
+        //
+        // public void SetPluginType(Type type)
+        // {
+        //     _pluginType = type;
+        // }
         
-        public void InitPlugin(TebexRconPlugin plugin)
-        {
-            LogDebug($"Configuring {plugin.GetGameName()} plugin {plugin.GetPluginVersion()}");
-            _plugin = plugin;
-        }
+        // public void InitPlugin(TebexRconPlugin plugin)
+        // {
+        //     LogDebug($"Configuring {plugin.GetGameName()} plugin {plugin.GetPluginVersion()}");
+        //     _plugin = plugin;
+        // }
+        
         public override void SaveConfig(TebexConfig config)
         {
             string jsonText = JsonConvert.SerializeObject(config, Formatting.Indented);
@@ -272,31 +298,42 @@ namespace Tebex.Adapters
                 ExecuteOnce(command.Conditions.Delay,
                     () =>
                     {
-                        Protocol.Write(rconCommand);
-                        var response = Protocol.Read(); //SendCommandAndReadResponse(2, cmd);
+                        var req = _rcon.Send(rconCommand);
+                        var response = _rcon.ReceiveResponseTo(req.Id, 10);
+                        LogDebug("delayed offline command request: " + req);
+                        LogDebug("delayed offline command response: {} " + response);
                     });
             }
             else // No delay, execute immediately
             {
-                Protocol.Write(rconCommand);
-                var response = Protocol.Read(); //SendCommandAndReadResponse(2, cmd);
+                var req = _rcon.Send(rconCommand);
+                var response = _rcon.ReceiveNext();
+                LogDebug("offline command request: " + req);
+                LogDebug("offline command response: {} " + response);
             }
         }
 
         public override bool ExecuteOnlineCommand(TebexApi.Command command, TebexApi.DuePlayer player, string commandName, string[] args)
         {
-            LogInfo("Executing online command...");
-            
             var cmd = ExpandUsernameVariables(command.CommandToRun, player);
             cmd = _plugin.ExpandGameUsernameVariables(cmd, player);
             
             LogInfo($"> Executing online command: {cmd}");
-            Protocol.Write(cmd);
-            var response = Protocol.Read(); //SendCommandAndReadResponse(2, cmd);
-            LogInfo($"> Server responded: '{response}'");
-
-            var lowerResponse = response.ToLower();
-            if (lowerResponse.Contains("error") || lowerResponse.Contains("invalid") || lowerResponse.Contains("unknown item") || lowerResponse.Contains("failed")) // loosely attempt to determine if we succeeded
+            var req = _rcon.Send(cmd);
+            var response = _rcon.ReceiveResponseTo(req.Id, 10);
+            if (!response.Item2.Equals("")) // error message in response pair
+            {
+                LogError("Failed to run online command: " + response.Item2);
+                return false;
+            }
+            else
+            {
+                LogInfo($"> Server responded: '{response.Item1.Response}'");    
+            }
+            
+            // loosely attempt to determine if we succeeded
+            var lowerResponse = response.Item1.Response.Message.ToLower();
+            if (lowerResponse.Contains("error") || lowerResponse.Contains("invalid") || lowerResponse.Contains("unknown item") || lowerResponse.Contains("failed"))
             {
                 return false;
             }
@@ -306,12 +343,17 @@ namespace Tebex.Adapters
 
         public override bool IsPlayerOnline(string playerRefId)
         {
-            return _plugin.IsPlayerOnline(playerRefId);
+            if (_plugin != null)
+            {
+                return _plugin.IsPlayerOnline(playerRefId);
+            }
+
+            return true;
         }
 
         public override object GetPlayerRef(string playerId)
         {
-            return _plugin.GetPlayerRef(playerId);
+            return new Object(); // to bypass ref check in BaseTebexAdapter without rcon plugin
         }
 
         public override string ExpandUsernameVariables(string input, TebexApi.DuePlayer player)
@@ -349,7 +391,7 @@ namespace Tebex.Adapters
                     LogDebug($" -> {verb.ToString()} {url} | {body}");
                     
                     // Set request headers
-                    httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"TebexRconAdapter");
+                    httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"TebexRconAdapter/" + Version);
                     httpClient.DefaultRequestHeaders.Add("X-Tebex-Secret", PluginConfig.SecretKey);
                     
                     StringContent data = new StringContent(body, Encoding.UTF8, "application/json");
@@ -464,7 +506,7 @@ namespace Tebex.Adapters
         
         public override void LogWarning(string message, string solution)
         {
-            Log(message, LogLevel.Warning);
+            Log(message + " " + solution, LogLevel.Warning);
         }
 
         public override void LogWarning(string message, string solution, Dictionary<String, String> metadata)
@@ -506,10 +548,5 @@ namespace Tebex.Adapters
         }
         
         #endregion
-
-        public override bool IsConnected()
-        {
-            return Protocol.IsConnected();
-        }
     }
 }

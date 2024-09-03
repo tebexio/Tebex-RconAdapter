@@ -2,7 +2,7 @@ using System.Net.Sockets;
 
 namespace Tebex.RCON.Protocol;
 
-public abstract class ProtocolManagerBase
+public abstract class LegacyProtocolManager
 {
     /** Set to true in order to constantly poll the connection for data */
     public bool EnablePolling = false;
@@ -15,7 +15,7 @@ public abstract class ProtocolManagerBase
     protected bool ReconnectOnFail = false;
     
     private Thread? _reconnectThread = null;
-    protected TebexRconPlugin? Listener;
+    protected LegacyRconPlugin? Listener;
 
     public abstract string GetProtocolName();
 
@@ -98,7 +98,7 @@ public abstract class ProtocolManagerBase
         }
     }
     
-    public void SetMessageListener(TebexRconPlugin plugin)
+    public void SetMessageListener(LegacyRconPlugin plugin)
     {
         Listener = plugin;
     }

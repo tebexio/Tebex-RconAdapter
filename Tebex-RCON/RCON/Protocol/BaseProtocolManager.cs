@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Tebex.RCON.Protocol
 {
-    public class MinecraftProtocolManager : ProtocolManagerBase
+    public class BaseProtocolManager : LegacyProtocolManager
     {
         public override bool Connect(string host, int port, string password, bool reconnectOnFail)
         {
@@ -24,21 +24,10 @@ namespace Tebex.RCON.Protocol
 
         private bool Authenticate()
         {
-            RconResponse authCommand = SendCommandAndReadResponse(3, Password);
-            Listener.GetAdapter().LogDebug("authorization: ");
-            Listener.GetAdapter().LogDebug($"- request: {authCommand.Request}");
-            Listener.GetAdapter().LogDebug($"- response: {authCommand.Response}");
-            
-            // If the server responds with an identical message ID then auth was successful
-            if (authCommand.Request.Id == authCommand.Response.Id)
-            {
-                return true;
-            }
-
-            return false;
+            return SendCommandAndReadResponse(3, Password) == "Authenticated.";
         }
 
-        public RconPacket SendCommand(int requestType, string command)
+        public void SendCommand(int requestType, string command)
         {
             int requestId = new Random().Next(1, int.MaxValue);
             byte[] commandBytes = Encoding.UTF8.GetBytes(command);
@@ -65,13 +54,11 @@ namespace Tebex.RCON.Protocol
                 Listener.GetAdapter().LogDebug($"RCON ({Host}:{Port}) -> id: {requestId} | type:{requestType}| length: {request.Length} bytes | body: '{command}'");    
             }
             Stream.Write(request, 0, request.Length);
-            return new RconPacket(requestId, requestType, command, request.Length);
         }
 
-        public RconResponse SendCommandAndReadResponse(int requestType, string payload)
+        public string SendCommandAndReadResponse(int requestType, string payload)
         {
-            RconResponse returnPair = new RconResponse();
-            RconPacket request = SendCommand(requestType, payload);
+            SendCommand(requestType, payload);
 
             byte[] response = new byte[4096];
             if (Listener != null)
@@ -89,13 +76,7 @@ namespace Tebex.RCON.Protocol
             {
                 Listener.GetAdapter().LogDebug($"RCON ({Host}:{Port}) <- {responseString} | length: {bytesRead} | responseId: {responseId} | responseType: {responseType} | responseString: {responseString}'");
             }
-            
-            RconPacket responsePacket = new RconPacket(responseId, responseType, responseString, bytesRead);
-            
-            returnPair.Request = request;
-            returnPair.Response = responsePacket;
-            
-            return returnPair;
+            return responseString;
         }
 
         public void Disconnect()
@@ -106,7 +87,7 @@ namespace Tebex.RCON.Protocol
 
         public override string GetProtocolName()
         {
-            return "MCRCON";
+            return "RCON";
         }
 
         public override void Write(string data)

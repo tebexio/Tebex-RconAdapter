@@ -44,9 +44,9 @@ namespace Tebex.Triage
         [JsonIgnore]
         public TebexPlatform platform;
         
-        private TebexRconPlugin _plugin;
+        private RconPlugin _plugin;
         
-        public PluginEvent(TebexRconPlugin plugin, TebexPlatform platform, EnumEventLevel level, string message)
+        public PluginEvent(RconPlugin plugin, TebexPlatform platform, EnumEventLevel level, string message)
         {
             _plugin = plugin;
             platform = platform;

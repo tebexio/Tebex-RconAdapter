@@ -3,83 +3,41 @@ using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
 {
-    public class RustPlugin : TebexRconPlugin
+    public class RustPlugin : RconPlugin
     {
-        public RustPlugin(ProtocolManagerBase protocolManager, BaseTebexAdapter adapter) : base(protocolManager, adapter)
-        {
-            // new Thread(() =>
-            // {
-            //     _protocolManager.PollRconMessages();    
-            // }).Start();
-        }
-        
-        public override string GetGameName()
-        {
-            return "Rust";
-        }
-        
-        public override void ReplyPlayer(string playerId, string message)
-        {
-            throw new NotImplementedException();
-        }
+        public RustPlugin(TebexRconAdapter adapter) : base(adapter) {}
 
+        public override string GetPluginVersion()
+        {
+            return "1.0.0";
+        }
+        
         public override bool IsPlayerOnline(string playerId)
         {
-            _protocolManager.EnablePolling = false;
-            
-            _protocolManager.Write("quit");
-
-
             bool found = false;
-            var cmdExecMessage = _protocolManager.Read();
+            var cmdExecMessage = _connection.Send("list");
 
-            while (true)
+            int tries = 0;
+            while (tries < 10)
             {
-                // After command exec message, this will be the first connected player
-                var message = _protocolManager.Read();
-
-                //TODO possible conflict with other commands that might be ran at the same time?
-                if (message.Contains("pltfmid=") && message.Contains(playerId))
+                Thread.Sleep(1000); // wait for websocket response to be polled and added to responses
+                var message = _connection.ReceiveResponseTo(cmdExecMessage.Id, 10);
+                if (!message.Item2.Equals("")) // no response yet, error is present
                 {
-                    found = true;
-                    break;
+                    tries++;
+                    continue;
                 }
 
-                if (message.Contains("Total of")) // End of player list is a total of the connected players
-                {
-                    break;
-                }
+                // successfully got response to our list message
+                return message.Item1.Response.Message.Contains(playerId);
             }
-            
-            _protocolManager.EnablePolling = true;
-            return found;
-        }
-        
-        public override bool AuthenticateGame(string gameType)
-        {
-            _protocolManager.EnablePolling = false;
-            
-            WebsocketProtocolManager protocol = (WebsocketProtocolManager)_protocolManager;
 
-            protocol.Write("quit");
-            _protocolManager.EnablePolling = true;
-            return true;
+            return false;
         }
 
-        public override void HandleRconOutput(string message)
+        public override RconConnection CreateRconConnection(TebexRconAdapter adapter, string host, int port, string password)
         {
-            _adapter.LogInfo($"'{message}' <- RCON");
-        }
-
-        public override object GetPlayerRef(string idOrUsername)
-        {
-            // Ref will be the desired steamid
-            return idOrUsername;
-        }
-
-        public override string ExpandGameUsernameVariables(string cmd, object playerObj)
-        {
-            return cmd;
+            return new WebsocketRcon(adapter, host, port, password);
         }
     }   
 }

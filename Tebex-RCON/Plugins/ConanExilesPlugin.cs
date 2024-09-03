@@ -3,7 +3,7 @@ using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
 {
-    public class ConanExilesPlugin : TebexRconPlugin
+    public class ConanExilesPlugin : LegacyRconPlugin
     {
         // For game type auth
         private int _blueprintConfigVersion;
@@ -11,11 +11,11 @@ namespace Tebex.Plugins
 
         private List<ConanPlayerInfo> lastPlayerList = new List<ConanPlayerInfo>();
         
-        public ConanExilesPlugin(ProtocolManagerBase client, TebexRconAdapter adapter) : base(client, adapter)
+        public ConanExilesPlugin(LegacyProtocolManager client, TebexRconAdapter adapter) : base(client, adapter)
         {
             TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(45), () =>
             {
-                if (_protocolManager.IsConnected())
+                if (_protocol.IsConnected())
                 {
                     GetOnlinePlayers();    
                 }
@@ -68,8 +68,8 @@ namespace Tebex.Plugins
         public void GetOnlinePlayers()
         {
             _adapter.LogDebug($"Querying server for online player list...");
-            _protocolManager.Write("listplayers");
-            var currentPlayerList = ConanPlayerInfo.ParsePlayerList(_protocolManager.Read());
+            _protocol.Write("listplayers");
+            var currentPlayerList = ConanPlayerInfo.ParsePlayerList(_protocol.Read());
             _adapter.LogDebug($"Detected {currentPlayerList.Count} online Conan players");
             
             List<string> oldJoins = new List<string>();

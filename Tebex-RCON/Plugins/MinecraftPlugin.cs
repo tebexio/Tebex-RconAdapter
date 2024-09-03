@@ -3,48 +3,23 @@ using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
 {
-    public class MinecraftPlugin : TebexRconPlugin
+    public class MinecraftPlugin : RconPlugin
     {
-        public MinecraftPlugin(ProtocolManagerBase protocolManager, BaseTebexAdapter adapter) : base(protocolManager, adapter)
+        public MinecraftPlugin(TebexRconAdapter adapter) : base(adapter)
         {
-            new Thread(() =>
-            {
-                _protocolManager.PollRconMessages();    
-            }).Start();
+
         }
-        
-        public override string GetGameName()
+
+        public override string GetPluginVersion()
         {
-            return "Minecraft";
-        }
-        
-        public override void ReplyPlayer(string playerId, string message)
-        {
-            throw new NotImplementedException();
+            return "1.0.0";
         }
 
         public override bool IsPlayerOnline(string playerId)
         {
-            // allows the Minecraft server to tell us if the command succeeded or not by assuming the player is online
+            // We can allow the Minecraft server to tell us if the command succeeded or not by assuming the player is online.
+            // Minecraft will return an error if the command fails which can be interpreted by the adapter.
             return true;
-        }
-        
-        public override bool AuthenticateGame(string gameType)
-        {
-            //_protocolManager.Write(TebexRconAdapter.PluginConfig.RconPassword);
-            //_protocolManager.EnablePolling = true;
-            return true;
-        }
-
-        public override void HandleRconOutput(string message)
-        {
-            _adapter.LogInfo($"'{message}' <- RCON");
-        }
-
-        public override object GetPlayerRef(string idOrUsername)
-        {
-            // Ref will be the desired steamid
-            return idOrUsername;
         }
 
         public override string ExpandGameUsernameVariables(string cmd, object playerObj)
