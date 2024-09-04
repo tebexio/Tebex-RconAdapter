@@ -6,7 +6,7 @@ namespace Tebex.RCON.Protocol;
 public abstract class RconPlugin
 {
     protected TebexRconAdapter _adapter;
-    protected RconConnection _connection;
+    protected RconConnection _rcon;
     
     public RconPlugin(TebexRconAdapter adapter)
     {
@@ -20,7 +20,7 @@ public abstract class RconPlugin
     
     public TebexPlatform GetPlatform()
     {
-        return new TebexPlatform(GetPluginVersion(), new TebexTelemetry("RCON-Adapter", GetPluginVersion(), _connection.GetType().Name));
+        return new TebexPlatform(GetPluginVersion(), new TebexTelemetry("RCON-Adapter", GetPluginVersion(), _rcon.GetType().Name));
     }
 
     public virtual string ExpandGameUsernameVariables(string cmd, object playerObj)
@@ -34,10 +34,20 @@ public abstract class RconPlugin
 
     public virtual RconConnection CreateRconConnection(TebexRconAdapter adapter, string host, int port, string password)
     {
-        if (_connection == null)
+        if (_rcon == null)
         {
-            _connection = new RconConnection(adapter, host, port, password);   
+            _rcon = new RconConnection(adapter, host, port, password);   
         }
-        return _connection;
+        return _rcon;
+    }
+
+    public virtual bool HasCustomPlayerRef()
+    {
+        return false;
+    }
+    
+    public virtual object GetPlayerRef(string playerId)
+    {
+        return new Object(); // to bypass ref check in BaseTebexAdapter without rcon plugin
     }
 }

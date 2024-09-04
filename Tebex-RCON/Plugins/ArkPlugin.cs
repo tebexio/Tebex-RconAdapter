@@ -16,8 +16,8 @@ namespace Tebex.Plugins
 
         public override bool IsPlayerOnline(string playerId)
         {
-            var listPlayersCommand = _connection.Send("listplayers");
-            var listPlayersResponse = _connection.ReceiveResponseTo(listPlayersCommand.Id, 100);
+            var listPlayersCommand = _rcon.Send("listplayers");
+            var listPlayersResponse = _rcon.ReceiveResponseTo(listPlayersCommand.Id, 100);
             if (!listPlayersResponse.Item2.Equals("")) // error present
             {
                 return false;

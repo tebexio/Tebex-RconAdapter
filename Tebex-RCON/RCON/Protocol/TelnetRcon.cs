@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text;
 using Tebex.Adapters;
 
@@ -7,6 +8,7 @@ public class TelnetRcon : RconConnection
 {
     private StreamReader _streamReader;
     private StreamWriter _streamWriter;
+    private bool _stop = false;
     
     public TelnetRcon(TebexRconAdapter adapter, string host, int port, string password) : base(adapter, host, port, password)
     {
@@ -14,13 +16,48 @@ public class TelnetRcon : RconConnection
 
     public override Tuple<bool, string> Connect()
     {
-        var result = base.Connect();
-        if (result.Item1) // successful TCP connection
+        var success = false;
+        var error = "";
+        client = new TcpClient();
+        try
+        {
+            client.Connect(_host, _port);
+            stream = client.GetStream();
+            success = true;
+        }
+        catch (Exception e)
+        {
+            error = e.Message;
+        }
+
+        if (success) // successful TCP connection
         {
             _streamReader = new StreamReader(stream, Encoding.ASCII);
             _streamWriter = new StreamWriter(stream, Encoding.ASCII) { AutoFlush = true };
+            var authResult = Auth(); // authorize after setting up our readers
+            if (authResult.Item1) // successful auth
+            {
+                new Thread(() =>
+                {
+                    try
+                    {
+                        while (!_stop)
+                        {
+                            var packet = ReadPacket(-1);
+                            _adapter.LogInfo(packet.ToString());
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        //pass if the poller fails to read a packet, usually during reconnect
+                    }
+                }).Start();
+                
+            }
+            return new Tuple<bool, string>(success, "");
         }
-        return base.Connect();
+
+        return new Tuple<bool, string>(success, error);
     }
 
     public override Tuple<bool, string> Auth()
@@ -60,9 +97,42 @@ public class TelnetRcon : RconConnection
         var response = _streamReader.ReadLine();
         if (response == null)
         {
-            response = "";
+            _stop = true;
+            var reconnectSuccess = Reconnect();
+            if (reconnectSuccess)
+            {
+                _streamReader = new StreamReader(stream, Encoding.ASCII);
+                _streamWriter = new StreamWriter(stream, Encoding.ASCII) { AutoFlush = true };
+                Auth();
+                _stop = false;
+                new Thread(() =>
+                {
+                    try
+                    {
+                        while (!_stop)
+                        {
+                            var packet = ReadPacket(-1);
+                            _adapter.LogInfo(packet.ToString());
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        //pass if the poller fails to read a packet, usually during reconnect
+                    }
+                }).Start();
+            }
+            else
+            {
+                _adapter.LogError("Failed to reconnect to server.");
+                Environment.Exit(1);
+            }
         }
         
         return new RconPacket(0, (int)RconPacket.Type.CommandResponse, response);
+    }
+
+    public override bool Polls()
+    {
+        return true;
     }
 }

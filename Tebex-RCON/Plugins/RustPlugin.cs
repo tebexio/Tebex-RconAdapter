@@ -15,13 +15,13 @@ namespace Tebex.Plugins
         public override bool IsPlayerOnline(string playerId)
         {
             bool found = false;
-            var cmdExecMessage = _connection.Send("list");
+            var cmdExecMessage = _rcon.Send("list");
 
             int tries = 0;
             while (tries < 10)
             {
-                Thread.Sleep(1000); // wait for websocket response to be polled and added to responses
-                var message = _connection.ReceiveResponseTo(cmdExecMessage.Id, 10);
+                Thread.Sleep(200); // wait for websocket response to be polled and added to responses
+                var message = _rcon.ReceiveResponseTo(cmdExecMessage.Id, 10);
                 if (!message.Item2.Equals("")) // no response yet, error is present
                 {
                     tries++;

@@ -3,7 +3,7 @@ using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
 {
-    public class ConanExilesPlugin : LegacyRconPlugin
+    public class ConanExilesPlugin : RconPlugin
     {
         // For game type auth
         private int _blueprintConfigVersion;
@@ -11,13 +11,17 @@ namespace Tebex.Plugins
 
         private List<ConanPlayerInfo> lastPlayerList = new List<ConanPlayerInfo>();
         
-        public ConanExilesPlugin(LegacyProtocolManager client, TebexRconAdapter adapter) : base(client, adapter)
+        public ConanExilesPlugin(TebexRconAdapter adapter) : base(adapter)
         {
             TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(45), () =>
             {
-                if (_protocol.IsConnected())
+                try
                 {
-                    GetOnlinePlayers();    
+                    GetOnlinePlayers();
+                }
+                catch (Exception e)
+                {
+                    _adapter.LogError($"Error while getting online players: {e.Message}");
                 }
             });
         }
@@ -60,16 +64,13 @@ namespace Tebex.Plugins
             }
         }
 
-        public override string GetGameName()
-        {
-            return "Conan Exiles";
-        }
-        
         public void GetOnlinePlayers()
         {
             _adapter.LogDebug($"Querying server for online player list...");
-            _protocol.Write("listplayers");
-            var currentPlayerList = ConanPlayerInfo.ParsePlayerList(_protocol.Read());
+            var listPacket = _rcon.Send("listplayers");
+            var listResponse = _rcon.ReceiveNext();
+            
+            var currentPlayerList = ConanPlayerInfo.ParsePlayerList(listResponse.Message);
             _adapter.LogDebug($"Detected {currentPlayerList.Count} online Conan players");
             
             List<string> oldJoins = new List<string>();
@@ -95,11 +96,6 @@ namespace Tebex.Plugins
             }
         }
 
-        public override void ReplyPlayer(string playerId, string message)
-        {
-            throw new NotImplementedException();
-        }
-
         public override bool IsPlayerOnline(string playerId)
         {
             foreach (var player in lastPlayerList)
@@ -112,43 +108,15 @@ namespace Tebex.Plugins
 
             return false;
         }
-        
-        public override bool AuthenticateGame(string gameType)
+
+        public override string GetPluginVersion()
         {
-            return true;
-            
-            /*
-            try
-            {
-                _blueprintConfigVersion = Convert.ToInt32(_rcon.SendCommandAndReadResponse(2, "GetServerSetting BlueprintConfigVersion")
-                    .Split('=')[1].Trim());
-                _configVersion = Convert.ToInt32(_rcon.SendCommandAndReadResponse(2, "GetServerSetting ConfigVersion")
-                    .Split('=')[1].Trim());
-
-                if (_blueprintConfigVersion != 0 && _configVersion != 0)
-                {
-                    //TODO remote game auth
-                    return _blueprintConfigVersion == 25 && _configVersion == 11;
-                }
-            }
-            catch (Exception e)
-            {
-                _adapter.LogError("An error occurred while authenticating the game server: ");
-                _adapter.LogError(e.Message);
-            }
-
-            return false;
-            */
-        }
-
-        public override void HandleRconOutput(string message)
-        {
-            _adapter.LogDebug($"'{message}' <- RCON");
+            return "1.1.0";
         }
 
         public override object GetPlayerRef(string idOrUsername)
         {
-            return GetPlayerPositionId(idOrUsername);
+            return _getPlayerPositionId(idOrUsername);
         }
 
         public override string ExpandGameUsernameVariables(string cmd, object playerObj)
@@ -169,7 +137,7 @@ namespace Tebex.Plugins
          * Conan Exiles identifies its players in commands via their positional ID in the players list. This
          * searches for the player in the players list and returns their "Idx" or their position in the list.
          */
-        public int GetPlayerPositionId(string idOrUsername)
+        private int _getPlayerPositionId(string idOrUsername)
         {
             // Refreshes lastPlayerList
             GetOnlinePlayers();
@@ -183,6 +151,11 @@ namespace Tebex.Plugins
             }
 
             return -1;
+        }
+
+        public override bool HasCustomPlayerRef()
+        {
+            return true;
         }
     }   
 }

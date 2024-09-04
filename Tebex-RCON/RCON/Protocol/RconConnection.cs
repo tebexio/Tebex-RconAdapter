@@ -25,6 +25,7 @@ public class RconConnection
         _port = port;
         _password = password;
         requests = new Dictionary<int, RconPacket>();
+        responses = new Dictionary<int, RconPacket>();
     }
 
     public virtual Tuple<bool, string> Connect()
@@ -57,7 +58,17 @@ public class RconConnection
                 client = new TcpClient();
                 client.Connect(_host, _port);
                 stream = client.GetStream();
-                _adapter.LogInfo(_adapter.Success("Reconnected."));
+                var authSuccess = Auth();
+                if (authSuccess.Item1)
+                {
+                    _adapter.LogInfo(_adapter.Success("Reconnected."));    
+                }
+                else
+                {
+                    _adapter.LogError(_adapter.Error("Authorization failed during reconnect. Did the RCON server password change?"));
+                    Environment.Exit(1);
+                }
+                
                 return true;
             }
             catch (SocketException e)
@@ -80,6 +91,14 @@ public class RconConnection
     {
         RconPacket authPacket = SendAuth(_password);
         RconPacket authResponse = ReceiveNext();
+
+        // Conan Exiles responds with "Authenticated." when successful but doesn't follow the proper RCON protocol of 
+        // responding with the same packet ID. Handle "Authenticated" here because everything else about the protocol is the same.
+        if (authResponse.Message.Equals("Authenticated."))
+        {
+            return new Tuple<bool, string>(true, "");
+        }
+        
         if (authResponse.Id != authPacket.Id)
         {
             return new Tuple<bool, string>(false, $"Failed to login to RCON server at {_host}:{_port}. Invalid password.");
@@ -107,6 +126,7 @@ public class RconConnection
     {
         if (stream == null || client == null || !client.Connected)
         {
+            Console.WriteLine("null stream, client, or not connected");
             if (!Reconnect())
             {
                 throw new InvalidOperationException("Unable to reconnect to the server.");
@@ -121,11 +141,12 @@ public class RconConnection
             requests.Add(packet.Id, packet);
             return packet;
         }
-        catch (SocketException)
+        catch (SocketException e)
         {
+            Console.WriteLine(e.Message);
             if (Reconnect())
             {
-                return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting"); //dummy packet to exit reconnect logic
+                return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting after send fail"); //dummy packet to exit reconnect logic
             }
             else
             {
@@ -157,12 +178,14 @@ public class RconConnection
         {
             return ReadPacket(10);
         }
-        catch (Exception)
+        catch (Exception e)
         {
+            _adapter.LogError(e.Message);
+            Console.WriteLine(e.StackTrace);
             if (Reconnect())
             {
                 // return a dummy packet so we can exit this func and carry on with normal operation after reconnect
-                return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting");
+                return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting after receive fail");
             }
             else
             {
@@ -186,7 +209,10 @@ public class RconConnection
         var responseString = Encoding.UTF8.GetString(response, 12, bytesRead - 14);
         
         var packet = new RconPacket(responseId, (RconPacket.Type)responseType, responseString);
-        responses.Add(packet.Id, packet);
+        if (packet.Id > 0)
+        {
+            responses.Add(packet.Id, packet);            
+        }
         return packet;
     }
 

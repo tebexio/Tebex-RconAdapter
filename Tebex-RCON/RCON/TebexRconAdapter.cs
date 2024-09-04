@@ -22,10 +22,8 @@ namespace Tebex.Adapters
         
         public const string Version = "1.1.0";
         private const string ConfigFilePath = "./tebex-config.json";
-
-        private Type? _pluginType;
+        
         private RconPlugin? _plugin;
-        //protected static ProtocolManagerBase? Protocol;
         private RconConnection? _rcon;
         private TextWriter? _logger;
         private static bool _isReady = false;
@@ -118,7 +116,7 @@ namespace Tebex.Adapters
                 LogInfo(Success($"Validated Tebex store {Ansi.Blue(info.AccountInfo.Name)} running game type {Ansi.Blue(info.AccountInfo.GameType)}"));
                 
                 String gameType = info.AccountInfo.GameType;
-                
+
                 // Attempt to create plugin
                 try
                 {
@@ -192,7 +190,7 @@ namespace Tebex.Adapters
             }, error =>
             {
                 LogError(Error("Failed to connect to Tebex: " + error.ErrorMessage));
-                LogInfo("Use `tebex.secret` to set your secret key.");
+                LogInfo("Use `tebex.secret` to set your secret key and restart the application.");
             });
         }
 
@@ -246,33 +244,6 @@ namespace Tebex.Adapters
                 }
             }
         }
-        
-        // public ProtocolManagerBase? GetProtocol()
-        // {
-        //     return Protocol;
-        // }
-        //
-        // public void SetProtocol(ProtocolManagerBase protocol)
-        // {
-        //     LogDebug($"Using {protocol.GetProtocolName()} protocol");
-        //     Protocol = protocol;
-        // }
-
-        // public TebexRconPlugin GetPlugin()
-        // {
-        //     return _plugin;
-        // }
-        //
-        // public void SetPluginType(Type type)
-        // {
-        //     _pluginType = type;
-        // }
-        
-        // public void InitPlugin(TebexRconPlugin plugin)
-        // {
-        //     LogDebug($"Configuring {plugin.GetGameName()} plugin {plugin.GetPluginVersion()}");
-        //     _plugin = plugin;
-        // }
         
         public override void SaveConfig(TebexConfig config)
         {
@@ -353,7 +324,14 @@ namespace Tebex.Adapters
 
         public override object GetPlayerRef(string playerId)
         {
-            return new Object(); // to bypass ref check in BaseTebexAdapter without rcon plugin
+            if (_plugin.HasCustomPlayerRef())
+            {
+                return _plugin.GetPlayerRef(playerId);
+            }
+            else
+            {
+                return new Object(); // to bypass ref check in BaseTebexAdapter without rcon plugin    
+            }
         }
 
         public override string ExpandUsernameVariables(string input, TebexApi.DuePlayer player)

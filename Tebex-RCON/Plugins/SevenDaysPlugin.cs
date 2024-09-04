@@ -21,15 +21,15 @@ namespace Tebex.Plugins
 
         public override bool IsPlayerOnline(string playerId)
         {
-            _connection.Send("listplayers");
+            _rcon.Send("listplayers");
             
             bool found = false;
-            var cmdExecMessage = _connection.ReceiveNext();
+            var cmdExecMessage = _rcon.ReceiveNext();
 
             while (true)
             {
                 // After command exec message, this will be the first connected player
-                var packet = _connection.ReceiveNext();
+                var packet = _rcon.ReceiveNext();
 
                 //TODO possible conflict with other commands that might be ran at the same time?
                 if (packet.Message.Contains("pltfmid=") && packet.Message.Contains(playerId))
