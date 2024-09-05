@@ -1,4 +1,5 @@
 ﻿using Tebex.Adapters;
+using Tebex.API;
 using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
@@ -96,11 +97,11 @@ namespace Tebex.Plugins
             }
         }
 
-        public override bool IsPlayerOnline(string playerId)
+        public override bool IsPlayerOnline(TebexApi.DuePlayer duePlayer)
         {
             foreach (var player in lastPlayerList)
             {
-                if (player.PlatformID.Equals(playerId) || player.CharName == playerId)
+                if (player.PlatformID.Equals(duePlayer.UUID) || player.CharName == duePlayer.Name)
                 {
                     return true;
                 }

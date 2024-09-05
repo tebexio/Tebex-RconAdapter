@@ -4,6 +4,9 @@ using Tebex.Adapters;
 
 namespace Tebex.RCON.Protocol;
 
+/// <summary>
+/// TelnetRcon is an implementation of Rcon through a Telnet connection.
+/// </summary>
 public class TelnetRcon : RconConnection
 {
     private StreamReader _streamReader;
@@ -18,11 +21,11 @@ public class TelnetRcon : RconConnection
     {
         var success = false;
         var error = "";
-        client = new TcpClient();
+        Tcp = new TcpClient();
         try
         {
-            client.Connect(_host, _port);
-            stream = client.GetStream();
+            Tcp.Connect(Host, Port);
+            Stream = Tcp.GetStream();
             success = true;
         }
         catch (Exception e)
@@ -32,11 +35,14 @@ public class TelnetRcon : RconConnection
 
         if (success) // successful TCP connection
         {
-            _streamReader = new StreamReader(stream, Encoding.ASCII);
-            _streamWriter = new StreamWriter(stream, Encoding.ASCII) { AutoFlush = true };
-            var authResult = Auth(); // authorize after setting up our readers
+            _streamReader = new StreamReader(Stream, Encoding.ASCII);
+            _streamWriter = new StreamWriter(Stream, Encoding.ASCII) { AutoFlush = true };
+            
+            // Authorize with the telnet server after setting up the appropriate streams
+            var authResult = Auth();
             if (authResult.Item1) // successful auth
             {
+                // Start polling thread
                 new Thread(() =>
                 {
                     try
@@ -44,7 +50,7 @@ public class TelnetRcon : RconConnection
                         while (!_stop)
                         {
                             var packet = ReadPacket(-1);
-                            _adapter.LogInfo(packet.ToString());
+                            Adapter.LogInfo(packet.ToString());
                         }
                     }
                     catch (Exception e)
@@ -57,12 +63,12 @@ public class TelnetRcon : RconConnection
             return new Tuple<bool, string>(success, "");
         }
 
-        return new Tuple<bool, string>(success, error);
+        return new Tuple<bool, string>(false, error);
     }
 
     public override Tuple<bool, string> Auth()
     {
-        // expect "Please enter password"
+        // We can expect "Please enter password" from 7 Days to Die, unsure about any other RCON telnet connections.
         var message = ReceiveNext().Message;
         if (message.Contains("enter password"))
         {
@@ -70,11 +76,10 @@ public class TelnetRcon : RconConnection
             {
                 return new Tuple<bool, string>(false, "This server requires a password. Please configure your password in tebex-config.json or run `tebex.setup`");
             }
+            
+            Send(Password);
                 
-            // we will be prompted for a password first if enabled
-            Send(_password);
-                
-            // expect "Logon successful"
+            // expect "Logon successful" from 7 Days to Die
             var passwordResponse = ReceiveNext();
             if (!passwordResponse.Message.Contains("successful"))
             {
@@ -85,24 +90,27 @@ public class TelnetRcon : RconConnection
         return new Tuple<bool, string>(true, "");
     }
 
-    protected override RconPacket SendPacket(RconPacket.Type requestType, string message)
+    protected override RconPacket SendPacket(RconPacket.Type packetType, string message)
     {
         var packet = new RconPacket(0, RconPacket.Type.CommandRequest, message);
+        
+        // Telnet directly writes just the message to the stream 
         _streamWriter.WriteLine(message);
+        
         return packet;
     }
 
     protected override RconPacket ReadPacket(int timeoutSeconds)
     {
         var response = _streamReader.ReadLine();
-        if (response == null)
+        if (response == null) // response will be null when we lost connection to the server
         {
             _stop = true;
             var reconnectSuccess = Reconnect();
             if (reconnectSuccess)
             {
-                _streamReader = new StreamReader(stream, Encoding.ASCII);
-                _streamWriter = new StreamWriter(stream, Encoding.ASCII) { AutoFlush = true };
+                _streamReader = new StreamReader(Stream, Encoding.ASCII);
+                _streamWriter = new StreamWriter(Stream, Encoding.ASCII) { AutoFlush = true };
                 Auth();
                 _stop = false;
                 new Thread(() =>
@@ -112,7 +120,7 @@ public class TelnetRcon : RconConnection
                         while (!_stop)
                         {
                             var packet = ReadPacket(-1);
-                            _adapter.LogInfo(packet.ToString());
+                            Adapter.LogInfo(packet.ToString());
                         }
                     }
                     catch (Exception e)
@@ -123,7 +131,7 @@ public class TelnetRcon : RconConnection
             }
             else
             {
-                _adapter.LogError("Failed to reconnect to server.");
+                Adapter.LogError("Failed to reconnect to server.");
                 Environment.Exit(1);
             }
         }

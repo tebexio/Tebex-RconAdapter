@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Tebex.Adapters;
 using Tebex.API;
 using Tebex.RCON.Protocol;
@@ -15,6 +12,9 @@ namespace Tebex.Triage
         ERROR
     }
 
+    /// <summary>
+    /// PluginEvent represents a reportable event that occurred during runtime.
+    /// </summary>
     public class PluginEvent
     {
         // Data attached to all plugin events, set via Init()
@@ -85,7 +85,7 @@ namespace Tebex.Triage
                 return;
             }
 
-            List<PluginEvent> eventsList = new List<PluginEvent>(); //TODO
+            List<PluginEvent> eventsList = new List<PluginEvent>();
             eventsList.Add(this);
             adapter.MakeWebRequest("https://plugin-logs.tebex.io/events", JsonConvert.SerializeObject(eventsList), TebexApi.HttpVerb.POST,
                 (code, body) =>

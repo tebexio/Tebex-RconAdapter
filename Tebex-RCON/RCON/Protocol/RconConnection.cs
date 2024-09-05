@@ -1,71 +1,87 @@
-using System;
 using System.Net.Sockets;
 using System.Text;
 using Tebex.Adapters;
 
 namespace Tebex.RCON.Protocol;
 
+/// <summary>
+/// An RconConnection handles a standard implementation of the RCON protocol over TCP.
+/// </summary>
 public class RconConnection
 {
-    protected TcpClient? client;
-    protected NetworkStream? stream;
-    protected Dictionary<int, RconPacket> requests;
-    protected Dictionary<int, RconPacket> responses;
-    protected TebexRconAdapter? _adapter;
-    protected readonly string _host;
-    protected readonly int _port;
-    protected readonly string _password;
-
+    protected readonly string Host;
+    protected readonly int Port;
+    protected readonly string Password;
+    protected TcpClient? Tcp;
+    protected NetworkStream? Stream;
+    protected readonly Dictionary<int, RconPacket> Requests;
+    protected readonly Dictionary<int, RconPacket> Responses;
+    protected readonly TebexRconAdapter Adapter;
     private int _nextId = 1;
     
     public RconConnection(TebexRconAdapter adapter, string host, int port, string password)
     {
-        _adapter = adapter;
-        _host = host;
-        _port = port;
-        _password = password;
-        requests = new Dictionary<int, RconPacket>();
-        responses = new Dictionary<int, RconPacket>();
+        Adapter = adapter;
+        Host = host;
+        Port = port;
+        Password = password;
+        Requests = new Dictionary<int, RconPacket>();
+        Responses = new Dictionary<int, RconPacket>();
     }
 
+    /// <summary>
+    /// Establishes a connection to the RCON server and reports if we are successful. The base implementation immediately
+    /// attempts to run <see cref="Auth"/> after connection is established.
+    /// </summary>
+    /// <returns>On success (true, ""), otherwise (false, {errorMessage})</returns>
     public virtual Tuple<bool, string> Connect()
     {
-        client = new TcpClient();
+        Tcp = new TcpClient();
         try
         {
-            client.Connect(_host, _port);
-            stream = client.GetStream();
+            Tcp.Connect(Host, Port);
+            Stream = Tcp.GetStream();
             return Auth();
         }
         catch (SocketException ex)
         {
-            return new Tuple<bool, string>(false, $"Failed to connect to RCON server at {_host}:{_port}. {ex.Message}");
+            return new Tuple<bool, string>(false, $"Failed to connect to RCON server at {Host}:{Port}. {ex.Message}");
         }
     }
 
+    /// <summary>
+    /// Attempts to re-establish connection to the RCON server every 5 seconds.
+    /// </summary>
+    /// <returns>True if reconnection was successful.</returns>
     protected virtual bool Reconnect()
     {
         CloseConnection();
 
-        _adapter.LogError(_adapter.Error($"Connection to RCON server lost!"));
+        Adapter.LogError(Adapter.Error($"Connection to RCON server lost!"));
         int tries = 0;
         while (true)
         {
             try
             {
                 tries++;
-                _adapter.LogInfo(_adapter.Warn($"Attempting reconnect #{tries}..."));
-                client = new TcpClient();
-                client.Connect(_host, _port);
-                stream = client.GetStream();
+                Adapter.LogInfo(Adapter.Warn($"Attempting reconnect #{tries}..."));
+                
+                // Attempt reconnect and re-auth
+                Tcp = new TcpClient();
+                Tcp.Connect(Host, Port);
+                Stream = Tcp.GetStream();
                 var authSuccess = Auth();
+                
+                // Report whether we succeeded or failed.
                 if (authSuccess.Item1)
                 {
-                    _adapter.LogInfo(_adapter.Success("Reconnected."));    
+                    Adapter.LogInfo(Adapter.Success("Reconnected."));    
                 }
                 else
                 {
-                    _adapter.LogError(_adapter.Error("Authorization failed during reconnect. Did the RCON server password change?"));
+                    // Failed authorization during a reconnect indicates the server's password changed. We don't want to keep our app running
+                    // against a server that has changed its authorization.
+                    Adapter.LogError(Adapter.Error("Authorization failed during reconnect. Did the RCON server password change?"));
                     Environment.Exit(1);
                 }
                 
@@ -81,15 +97,22 @@ public class RconConnection
         return false;
     }
 
+    /// <summary>
+    /// Closes and cleans up RCON connection info.
+    /// </summary>
     protected virtual void CloseConnection()
     {
-        stream?.Close();
-        client?.Close();
+        Stream?.Close();
+        Tcp?.Close();
     }
 
+    /// <summary>
+    /// Authorizes the connection to the RCON server.
+    /// </summary>
+    /// <returns>(true, "") if authorization succeeded. Otherwise (false, "{errorMessage}")</returns>
     public virtual Tuple<bool, string> Auth()
     {
-        RconPacket authPacket = SendAuth(_password);
+        RconPacket authPacket = SendAuth(Password);
         RconPacket authResponse = ReceiveNext();
 
         // Conan Exiles responds with "Authenticated." when successful but doesn't follow the proper RCON protocol of 
@@ -99,68 +122,91 @@ public class RconConnection
             return new Tuple<bool, string>(true, "");
         }
         
+        // Successful authorization will respond with an identical packet ID
         if (authResponse.Id != authPacket.Id)
         {
-            return new Tuple<bool, string>(false, $"Failed to login to RCON server at {_host}:{_port}. Invalid password.");
+            return new Tuple<bool, string>(false, $"Failed to login to RCON server at {Host}:{Port}. Invalid password.");
         }
         
         return new Tuple<bool, string>(true, "");
     }
     
+    /// <summary>
+    /// Increments the next ID available for an RCON packet
+    /// </summary>
+    /// <returns>The next ID available to use.</returns>
     public int NextId()
     {
         return _nextId++;
     }
 
+    /// <summary>
+    /// Sends an RCON command to the server. The request is returned as an RconPacket for later use if necessary.
+    /// </summary>
+    /// <param name="message">The command for the server to execute.</param>
+    /// <returns>The request as a <see cref="RconPacket"/></returns>
     public RconPacket Send(string message)
     {
         return SendPacket(RconPacket.Type.CommandRequest, message);
     }
 
+    /// <summary>
+    /// Sends an authorization packet to the server with the given password.
+    /// </summary>
+    /// <param name="password">The RCON password.</param>
+    /// <returns>The request as a <see cref="RconPacket"/></returns>
     public RconPacket SendAuth(string password)
     {
         return SendPacket(RconPacket.Type.LoginRequest, password);
     }
-
-    protected virtual RconPacket SendPacket(RconPacket.Type requestType, string message)
+    
+    /// <summary>
+    /// Sends a packet of a given type through our connection to the RCON server.
+    /// </summary>
+    /// <param name="packetType">The type of packet to send.</param>
+    /// <param name="message">The packet's message or payload.</param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    protected virtual RconPacket SendPacket(RconPacket.Type packetType, string message)
     {
-        if (stream == null || client == null || !client.Connected)
+        // Ensure that all connection parameters are assigned and still valid
+        if (Stream == null || Tcp == null || !Tcp.Connected)
         {
-            Console.WriteLine("null stream, client, or not connected");
             if (!Reconnect())
             {
-                throw new InvalidOperationException("Unable to reconnect to the server.");
+                throw new InvalidOperationException("Unable to reconnect to the RCON server.");
             }
         }
 
+        // Create and send the RCON packet through our connection stream
         try
         {
-            RconPacket packet = CreatePacket(requestType, message);
+            RconPacket packet = new RconPacket(NextId(), packetType, message);
             byte[] request = SerializePacket(packet);
-            stream.Write(request, 0, request.Length);
-            requests.Add(packet.Id, packet);
+            Stream.Write(request, 0, request.Length);
+            Requests.Add(packet.Id, packet);
             return packet;
         }
         catch (SocketException e)
         {
-            Console.WriteLine(e.Message);
+            Adapter.LogError(e.Message);
             if (Reconnect())
             {
-                return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting after send fail"); //dummy packet to exit reconnect logic
+                //return a dummy packet to exit reconnect logic
+                return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting after send fail");
             }
             else
             {
-                throw new InvalidOperationException("Failed to reconnect.");
+                throw new InvalidOperationException("Unable to reconnect to the RCON server.");
             }
         }
     }
 
-    private RconPacket CreatePacket(RconPacket.Type requestType, string message)
-    {
-        int id = NextId();
-        return new RconPacket(id, requestType, message);
-    }
-
+    /// <summary>
+    /// Writes an RCON packet to its expected byte format
+    /// </summary>
+    /// <param name="packet">The packet to serialize.</param>
+    /// <returns>Serialized RCON packet bytes</returns>
     private byte[] SerializePacket(RconPacket packet)
     {
         byte[] commandBytes = Encoding.UTF8.GetBytes(packet.Message);
@@ -172,6 +218,12 @@ public class RconConnection
         return request;
     }
 
+    /// <summary>
+    /// ReceiveNext is a blocking operation that will wait for a maximum of 10 seconds for the RCON server to respond
+    /// before considering it timed out.
+    /// </summary>
+    /// <returns>The next <see cref="RconPacket"/> received by the client.</returns>
+    /// <exception cref="InvalidOperationException"></exception>
     public RconPacket ReceiveNext()
     {
         try
@@ -180,7 +232,7 @@ public class RconConnection
         }
         catch (Exception e)
         {
-            _adapter.LogError(e.Message);
+            Adapter.LogError(e.Message);
             Console.WriteLine(e.StackTrace);
             if (Reconnect())
             {
@@ -189,41 +241,64 @@ public class RconConnection
             }
             else
             {
-                throw new InvalidOperationException("Failed to reconnect.");
+                throw new InvalidOperationException("Failed to reconnect to the RCON server.");
             }
         }
     }
 
+    /// <summary>
+    /// ReadPacket will read the next RCON packet from our connected stream.
+    /// </summary>
+    /// <param name="timeoutSeconds">The number of seconds to wait for data before considering timeout.</param>
+    /// <returns>The next <see cref="RconPacket"/> received by the client.</returns>
+    /// <exception cref="InvalidOperationException"></exception>
     protected virtual RconPacket ReadPacket(int timeoutSeconds)
     {
-        stream.ReadTimeout = timeoutSeconds * 1000;
+        Stream.ReadTimeout = timeoutSeconds * 1000;
+        
         var response = new byte[4096];
-        var bytesRead = stream.Read(response, 0, response.Length);
+        var bytesRead = Stream.Read(response, 0, response.Length);
         if (bytesRead < 14)
         {
             throw new InvalidOperationException("Received invalid packet size.");
         }
         
+        // Read the next RCON packet
         var responseId = BitConverter.ToInt32(response, 4);
         var responseType = BitConverter.ToInt32(response, 8);
         var responseString = Encoding.UTF8.GetString(response, 12, bytesRead - 14);
         
+        // Create a new RconPacket based on the received data. We only add this packet to Responses if it is an actual
+        // response to a command. Generally server logs and other data will use -1 as their packet ID.
         var packet = new RconPacket(responseId, (RconPacket.Type)responseType, responseString);
         if (packet.Id > 0)
         {
-            responses.Add(packet.Id, packet);            
+            Responses.Add(packet.Id, packet);
         }
         return packet;
     }
 
+    /// <summary>
+    /// Indicates if we should expect the connection to continually poll from the server. Some servers send keepalives or their
+    /// server logs when connected to RCON. This should be checked before attempting to use <see cref="ReceiveNext"/>
+    /// because Polling connections will cause a timeout as the stream is always blocked for reading.
+    /// Instead, use <see cref="ReceiveResponseTo"/> for polling connections. Non-polling connections can be safely read sequentially.
+    /// </summary>
+    /// <returns></returns>
     public virtual bool Polls()
     {
         return false;
     }
     
+    /// <summary>
+    /// Gets a response to a given message ID within a set number of retries.
+    /// </summary>
+    /// <param name="messageId">The message ID of the request</param>
+    /// <param name="retries">Number of retries to attempt reading a response, for sequential connections.</param>
+    /// <returns>The RconResponse pair for the original message ID, or a Tuple containing an error string as Item2</returns>
     public virtual Tuple<RconResponse, string> ReceiveResponseTo(int messageId, int retries)
     {
-        if (!requests.ContainsKey(messageId))
+        if (!Requests.ContainsKey(messageId))
         {
             return new Tuple<RconResponse, String>(new RconResponse(), "Message " + messageId + " has not been sent yet");
         }
@@ -231,7 +306,7 @@ public class RconConnection
         int tries = 0;
         while (tries < retries)
         {
-            RconPacket request = requests[messageId];
+            RconPacket request = Requests[messageId];
             RconPacket next = ReceiveNext();
             if (next.Id == messageId)
             {

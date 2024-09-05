@@ -1,4 +1,5 @@
 ﻿using Tebex.Adapters;
+using Tebex.API;
 using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
@@ -12,7 +13,7 @@ namespace Tebex.Plugins
             return "1.0.0";
         }
         
-        public override bool IsPlayerOnline(string playerId)
+        public override bool IsPlayerOnline(TebexApi.DuePlayer player)
         {
             bool found = false;
             var cmdExecMessage = _rcon.Send("list");
@@ -29,15 +30,15 @@ namespace Tebex.Plugins
                 }
 
                 // successfully got response to our list message
-                return message.Item1.Response.Message.Contains(playerId);
+                return message.Item1.Response.Message.Contains(player.Name) || message.Item1.Response.Message.Contains(player.UUID);
             }
 
             return false;
         }
 
-        public override RconConnection CreateRconConnection(TebexRconAdapter adapter, string host, int port, string password)
+        public override RconConnection CreateRconConnection(string host, int port, string password)
         {
-            return new WebsocketRcon(adapter, host, port, password);
+            return new WebsocketRcon(_adapter, host, port, password);
         }
     }   
 }

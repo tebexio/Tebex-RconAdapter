@@ -8,10 +8,16 @@ using Tebex.Util;
 
 namespace Tebex.Adapters
 {
-    /** Provides logic that implements some RCON protocol */
+    /// <summary>
+    /// TebexRconAdapter implements Tebex plugin functions via an RCON connection.
+    /// </summary>
     public class TebexRconAdapter : BaseTebexAdapter
     {
-        public Dictionary<string, Type> PLUGINS = new Dictionary<string, Type>()
+        /// <summary>
+        /// Map of Tebex game IDs to the appropriate RCON plugin. An RCON plugin is loaded at startup to provide the
+        /// necessary enhanced RCON integration functions.
+        /// </summary>
+        private Dictionary<string, Type> PLUGINS = new Dictionary<string, Type>()
         {
             {"Minecraft: Java Edition", typeof(MinecraftPlugin)},
             {"ARK: Survival Evolved", typeof(ArkPlugin)},
@@ -24,74 +30,36 @@ namespace Tebex.Adapters
         private const string ConfigFilePath = "./tebex-config.json";
         
         private RconPlugin? _plugin;
-        private RconConnection? _rcon;
-        private TextWriter? _logger;
+        private RconConnection _rcon;
+        private TextWriter _logger;
         private static bool _isReady = false;
 
         private TebexConfig? _startupConfig;
-
-        private TebexConfig ReadConfig()
-        {
-            var cfg = new TebexConfig();
-            
-            // Read or create the config file
-            if (File.Exists(ConfigFilePath))
-            {
-                string jsonText = File.ReadAllText(ConfigFilePath);
-                cfg = JsonConvert.DeserializeObject<TebexConfig>(jsonText);
-            }
-            else
-            {
-                cfg = new TebexConfig(); // default settings are applied
-                SaveConfig(cfg);
-            }
-
-            return cfg;
-        }
-
+        
+        /// <summary>
+        /// Gets the RconConnection instance through which commands can be sent.  This is available after Init().
+        /// The underlying connection may not always be active, but should trigger reconnection if an established connection
+        /// is lost.
+        /// </summary>
+        /// <returns></returns>
         public RconConnection GetRcon()
         {
             return _rcon;
         }
-
-        public override bool IsConnected()
-        {
-            return _isReady;
-        }
-        
-        public string Success(String message)
-        {
-            return $"[ {Ansi.Green("\u2713")} ] " + message;
-        }
-
-        public string Error(String message)
-        {
-            return $"[ {Ansi.Red("X")} ] " + message;
-        }
-
-        public string Warn(String message)
-        {
-            return $"[ {Ansi.Yellow("\u26a0")} ] " + message;
-        }
         
         public override void Init()
         {
-            // Setup log
+            // Setup log paths
             var currentPath = AppContext.BaseDirectory;
-            char pathSeparator = Path.PathSeparator;
-            if (pathSeparator == ':')
-            {
-                pathSeparator = '/';
-            }
+            char dirSeparator = Path.DirectorySeparatorChar;
             
             var logName = $"TebexRcon-{DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")}.log";
-            var logPath = currentPath + pathSeparator + logName;
+            var logPath = currentPath + dirSeparator + logName;
             _logger = new StreamWriter(logPath, true);
-            LogInfo(Ansi.White($"Log file is being saved to '{currentPath}{pathSeparator}{logName}'"));
+            LogInfo(Ansi.White($"Log file is being saved to '{currentPath}{dirSeparator}{logName}'"));
             LogInfo($"{Ansi.Yellow("Tebex RCON Adapter Client " + Version)} | {Ansi.Blue(Ansi.Underline("https://tebex.io"))}");
             
-            // This will be set if we have enough vars from either startup arguments or environment variables
-            // for the adapter to attempt to start.
+            //startupConfig is expected to be set from SetStartupArguments before Init()
             if (_startupConfig == null)
             {
                 // When we don't have enough startup args, assume the user is launching directly
@@ -107,7 +75,7 @@ namespace Tebex.Adapters
             // If no secret key is set, assume we need to run setup and collect info from the user.
             if (PluginConfig.SecretKey == "")
             {
-                LogWarning("Your webstore's secret key has not been configured yet.", "Initiating setup...");
+                LogInfo(Warn("Your webstore's secret key has not been configured yet. Initiating setup..."));
                 DoSetup();
             }
 
@@ -117,7 +85,7 @@ namespace Tebex.Adapters
                 
                 String gameType = info.AccountInfo.GameType;
 
-                // Attempt to create plugin
+                // Attempt to create plugin instance for the store's game type
                 try
                 {
                     _plugin = Activator.CreateInstance(PLUGINS[gameType], this) as RconPlugin;
@@ -127,6 +95,7 @@ namespace Tebex.Adapters
                     Error(e.Message);
                 }
 
+                // If we can't create a plugin, enhanced features won't be available
                 if (_plugin == null)
                 {
                     LogWarning(Warn($"We do not support enhanced RCON for '{gameType}'."),
@@ -137,13 +106,15 @@ namespace Tebex.Adapters
                     LogInfo(Success("Loaded Tebex RCON plugin for " + gameType + ". Enhanced RCON support is enabled."));
                 }
                 
-                
-                // Connect to RCON after secret key is verified correct
                 try
                 {
+                    /*
+                     * When a plugin is available, it may override CreateRconConnection to implement a different RCON protocol (BattleNet, Websocket, etc.)
+                     * Otherwise we assume a basic RCON connection implementing the Minecraft protocol. The connection is not actually made until Connect() is called.
+                     */
                     if (_plugin != null)
                     {
-                        _rcon = _plugin.CreateRconConnection(this, PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword);                        
+                        _rcon = _plugin.CreateRconConnection(PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword);                        
                     }
                     else
                     {
@@ -151,9 +122,10 @@ namespace Tebex.Adapters
                             PluginConfig.RconPassword);
                     }
                     
-                    LogInfo($"Connecting to RCON server at {PluginConfig.RconIp}:{PluginConfig.RconPort} using {_rcon.GetType().Name}...");
-                    Tuple<bool, string> connectResult = _rcon.Connect();
-                    if (!connectResult.Item1)
+                    LogInfo(Ansi.Yellow($"Connecting to RCON server at {PluginConfig.RconIp}:{PluginConfig.RconPort} using {_rcon.GetType().Name}..."));
+                    Tuple<bool, string> connectResult = _rcon.Connect(); // returns success or false and an error message
+                    
+                    if (!connectResult.Item1) // failed to connect
                     {
                         LogError(Error($"{connectResult.Item2}. Check that your RCON connection parameters are correct, and try again."));
                         Environment.Exit(1);
@@ -194,6 +166,14 @@ namespace Tebex.Adapters
             });
         }
 
+        /// <summary>
+        /// Initializes a new configuration with the provided startup parameters. This should be run before Init().
+        /// </summary>
+        /// <param name="key">The store secret key.</param>
+        /// <param name="host">The RCON server host/ip.</param>
+        /// <param name="port">The RCON port.</param>
+        /// <param name="auth">The RCON login password.</param>
+        /// <param name="debug">Whether we are in debug mode</param>
         public void SetStartupArguments(string key, string host, string port, string auth, string debug)
         {
             TebexConfig newStartupConfig = new TebexConfig();
@@ -245,22 +225,36 @@ namespace Tebex.Adapters
             }
         }
         
+        /// <summary>
+        /// Reads or creates the configuration file for RCON Adapter
+        /// </summary>
+        /// <returns><see cref="BaseTebexAdapter.TebexConfig"/> with loaded values from config file. Default values if no config file found.</returns>
+        private TebexConfig ReadConfig()
+        {
+            var cfg = new TebexConfig();
+            if (File.Exists(ConfigFilePath))
+            {
+                string jsonText = File.ReadAllText(ConfigFilePath);
+                cfg = JsonConvert.DeserializeObject<TebexConfig>(jsonText);
+            }
+            else
+            {
+                cfg = new TebexConfig(); // default settings are applied
+                SaveConfig(cfg); // saves immediately to disk
+            }
+
+            return cfg;
+        }
+
         public override void SaveConfig(TebexConfig config)
         {
             string jsonText = JsonConvert.SerializeObject(config, Formatting.Indented);
             File.WriteAllText(ConfigFilePath, jsonText);
         }
 
-        public override void ReplyPlayer(object player, string message)
+        public override void ExecuteOfflineCommand(TebexApi.Command command, string commandName, string[] args)
         {
-            throw new NotImplementedException();
-        }
-
-        public override void ExecuteOfflineCommand(TebexApi.Command command, object playerObj, string commandName, string[] args)
-        {
-            var rconCommand = command.CommandToRun;
-            ExpandOfflineVariables(rconCommand, command.Player);
-            
+            var rconCommand = ExpandOfflineVariables(command.CommandToRun, command.Player);
             if (command.Conditions.Delay > 0)
             {
                 // Command requires a delay, use built-in plugin timer to wait until callback
@@ -297,7 +291,7 @@ namespace Tebex.Adapters
                 LogError("Failed to run online command: " + response.Item2);
                 return false;
             }
-            else
+            else // no error, successful response
             {
                 LogInfo($"> Server responded: '{response.Item1.Response}'");    
             }
@@ -312,25 +306,28 @@ namespace Tebex.Adapters
             return true; // successful command
         }
 
-        public override bool IsPlayerOnline(string playerRefId)
+        public override bool IsPlayerOnline(TebexApi.DuePlayer duePlayer)
         {
+            // Passthrough to an enabled plugin to determine if players are online.
             if (_plugin != null)
             {
-                return _plugin.IsPlayerOnline(playerRefId);
+                return _plugin.IsPlayerOnline(duePlayer);
             }
 
+            // Without a plugin we assume the player is online to always attempt online command requests
             return true;
         }
 
         public override object GetPlayerRef(string playerId)
         {
-            if (_plugin.HasCustomPlayerRef())
+            if (_plugin != null && _plugin.HasCustomPlayerRef())
             {
                 return _plugin.GetPlayerRef(playerId);
             }
             else
             {
-                return new Object(); // to bypass ref check in BaseTebexAdapter without rcon plugin    
+                // To bypass ref check in BaseTebexAdapter without an RCON plugin defined   
+                return new Object(); 
             }
         }
 
@@ -366,16 +363,18 @@ namespace Tebex.Adapters
             {
                 using (HttpClient httpClient = new HttpClient())
                 {
+                    // Log details of the send
                     LogDebug($" -> {verb.ToString()} {url} | {body}");
-                    
-                    // Set request headers
+
+                    // Set required request headers
                     httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"TebexRconAdapter/" + Version);
                     httpClient.DefaultRequestHeaders.Add("X-Tebex-Secret", PluginConfig.SecretKey);
+                    httpClient.Timeout = TimeSpan.FromSeconds(10);
                     
                     StringContent data = new StringContent(body, Encoding.UTF8, "application/json");
-                    HttpResponseMessage response = null;
 
-                    Task<HttpResponseMessage> task = null;
+                    // Determine how to send our request and wait for it to complete.
+                    Task<HttpResponseMessage> task;
                     switch (verb)
                     {
                         case TebexApi.HttpVerb.GET:
@@ -397,40 +396,62 @@ namespace Tebex.Adapters
                             request.Method = HttpMethod.Delete;
                             task = httpClient.SendAsync(request);
                             break;
+                        default:
+                            LogError("Unsupported HTTP method: " + verb);
+                            return;
                     }
-                    task.Wait();
-                    response = task.Result;
 
+                    task.Wait();
+
+                    HttpResponseMessage response = task.Result;
                     var code = (int)response.StatusCode;
-                    LogDebug($"{code} <- {verb.ToString()} {url}");
-                    
-                    Task<String> readTask = response.Content.ReadAsStringAsync();
+                    LogDebug($"{code} <- {verb.ToString()} {url}"); // Log the response value for debug
+
+                    // Read the actual response body/content, if present
+                    var readTask = response.Content.ReadAsStringAsync();
                     readTask.Wait();
-                    string content = readTask.Result;
+                    var content = readTask.Result;
                     LogDebug($" | {content}");
-                    
+
+                    // Pass the response body to any provided handler functions based on the type of response
                     if (response.IsSuccessStatusCode)
                     {
                         onSuccess?.Invoke(code, content);
                     }
                     else if (code >= 400 && code <= 499)
                     {
+                        // We expect standard formatted TebexErrors for HTTP client error responses
                         var tebexError = JsonConvert.DeserializeObject<TebexApi.TebexError>(content);
                         onApiError?.Invoke(tebexError);
                     }
                     else if (code >= 500)
                     {
-                        onServerError?.Invoke(code, content);  
+                        // Server error responses include the error code and any content read from the server.
+                        // The response may not necessarily be a JSON response, use caution if attempting to parse as such.
+                        onServerError?.Invoke(code, content);
                     }
                 }
             }
             catch (Exception ex)
             {
+                // Unexpected exceptions still write to server error with the exception message.
                 onServerError?.Invoke(0, ex.Message);
             }
         }
         
+        public override bool IsTebexReady()
+        {
+            return _isReady;
+        }
+        
         #region Threading
+        
+        /// <summary>
+        /// Executes a given Action across the given TimeSpan. This creates an async Task and checks each second if we are
+        /// at the designated time interval before ultimately running the action when it's time.
+        /// </summary>
+        /// <param name="interval">The interval the Action should be performed at.</param>
+        /// <param name="action">The action/function to perform.</param>
         public static async void ExecuteEvery(TimeSpan interval, Action action)
         {
             CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
@@ -456,6 +477,12 @@ namespace Tebex.Adapters
             }
         }
 
+        /// <summary>
+        /// Executes a given action once after a set number of seconds. Used to delay command execution per each command.
+        /// Command execution delays can be set on a per-command basis.
+        /// </summary>
+        /// <param name="delaySeconds">The number of seconds to delay execution.</param>
+        /// <param name="action">The action/function to perform.</param>
         public static async void ExecuteOnce(int delaySeconds, Action action)
         {
             await Task.Delay(delaySeconds);
@@ -465,6 +492,8 @@ namespace Tebex.Adapters
         #endregion
         
         #region Logging
+        // Basic implementation of a file logger
+        
         private enum LogLevel
         {
             Info,
@@ -473,7 +502,12 @@ namespace Tebex.Adapters
             Debug
         }
         
-        private void Log(string message, LogLevel level)
+        /// <summary>
+        /// TebexRconAdapter._log logs a timestamped message to both the console and the log file. 
+        /// </summary>
+        /// <param name="message">The message to log.</param>
+        /// <param name="level">The log level to use.</param>
+        private void _log(string message, LogLevel level)
         {
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             string logMessage = $"[{timestamp}] [{level}] {message}";
@@ -484,13 +518,13 @@ namespace Tebex.Adapters
         
         public override void LogWarning(string message, string solution)
         {
-            Log(message + " " + solution, LogLevel.Warning);
+            _log(message + " " + solution, LogLevel.Warning);
         }
 
         public override void LogWarning(string message, string solution, Dictionary<String, String> metadata)
         {
-            Log(message, LogLevel.Warning);
-            Log("- " + solution, LogLevel.Warning);
+            _log(message, LogLevel.Warning);
+            _log("- " + solution, LogLevel.Warning);
 
             if (PluginConfig.AutoReportingEnabled)
             {
@@ -500,12 +534,12 @@ namespace Tebex.Adapters
 
         public override void LogError(string message)
         {
-            Log(message, LogLevel.Error);
+            _log(message, LogLevel.Error);
         }
 
         public override void LogError(string message, Dictionary<String, String> metadata)
         {
-            Log(message, LogLevel.Error);
+            _log(message, LogLevel.Error);
             if (PluginConfig.AutoReportingEnabled)
             {
                 new PluginEvent(_plugin, _plugin.GetPlatform(), EnumEventLevel.ERROR, message).WithMetadata(metadata).Send(this);
@@ -514,14 +548,14 @@ namespace Tebex.Adapters
         
         public override void LogInfo(string message)
         {
-            Log(message, LogLevel.Info);
+            _log(message, LogLevel.Info);
         }
 
         public override void LogDebug(string message)
         {
             if (PluginConfig.DebugMode)
             {
-                Log(message, LogLevel.Debug);    
+                _log(message, LogLevel.Debug);    
             }
         }
         

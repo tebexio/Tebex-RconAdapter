@@ -1,7 +1,8 @@
-﻿using System;
-
-namespace Tebex.Triage
+﻿namespace Tebex.Triage
 {
+    /// <summary>
+    /// TebexTelemetry is a container class for storing information about the current runtime software and version.
+    /// </summary>
     public class TebexTelemetry
     {
         private string _serverSoftware;

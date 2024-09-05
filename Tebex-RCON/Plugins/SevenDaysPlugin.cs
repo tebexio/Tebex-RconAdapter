@@ -1,4 +1,5 @@
 ﻿using Tebex.Adapters;
+using Tebex.API;
 using Tebex.RCON.Protocol;
 
 namespace Tebex.Plugins
@@ -9,9 +10,9 @@ namespace Tebex.Plugins
         {
         }
 
-        public override RconConnection CreateRconConnection(TebexRconAdapter adapter, string host, int port, string password)
+        public override RconConnection CreateRconConnection(string host, int port, string password)
         {
-            return new TelnetRcon(adapter, host, port, password);
+            return new TelnetRcon(_adapter, host, port, password);
         }
 
         public override string GetPluginVersion()
@@ -19,7 +20,7 @@ namespace Tebex.Plugins
             return "1.1.0";
         }
 
-        public override bool IsPlayerOnline(string playerId)
+        public override bool IsPlayerOnline(TebexApi.DuePlayer player)
         {
             _rcon.Send("listplayers");
             
@@ -32,7 +33,7 @@ namespace Tebex.Plugins
                 var packet = _rcon.ReceiveNext();
 
                 //TODO possible conflict with other commands that might be ran at the same time?
-                if (packet.Message.Contains("pltfmid=") && packet.Message.Contains(playerId))
+                if (packet.Message.Contains("pltfmid=") && packet.Message.Contains(player.UUID))
                 {
                     found = true;
                     break;
