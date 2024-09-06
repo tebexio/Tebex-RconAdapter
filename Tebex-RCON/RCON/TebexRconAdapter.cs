@@ -49,6 +49,8 @@ namespace Tebex.Adapters
         
         public override void Init()
         {
+            Instance = this;
+            
             // Setup log paths
             var currentPath = AppContext.BaseDirectory;
             char dirSeparator = Path.DirectorySeparatorChar;
@@ -81,6 +83,11 @@ namespace Tebex.Adapters
 
             FetchStoreInfo(info =>
             {
+                // Set plugin event vars for error reporting
+                PluginEvent.SERVER_IP = PluginConfig.RconIp;
+                PluginEvent.STORE_URL = info.AccountInfo.Domain;
+                PluginEvent.SERVER_ID = info.ServerInfo.Id.ToString();
+                
                 LogInfo(Success($"Validated Tebex store {Ansi.Blue(info.AccountInfo.Name)} running game type {Ansi.Blue(info.AccountInfo.GameType)}"));
                 
                 String gameType = info.AccountInfo.GameType;
@@ -92,7 +99,7 @@ namespace Tebex.Adapters
                 }
                 catch (Exception e)
                 {
-                    Error(e.Message);
+                    LogInfo(Error(e.Message));
                 }
 
                 // If we can't create a plugin, enhanced features won't be available
@@ -535,6 +542,11 @@ namespace Tebex.Adapters
         public override void LogError(string message)
         {
             _log(message, LogLevel.Error);
+            
+            if (PluginConfig.AutoReportingEnabled)
+            {
+                new PluginEvent(_plugin, _plugin.GetPlatform(), EnumEventLevel.ERROR, message).Send(this);
+            }
         }
 
         public override void LogError(string message, Dictionary<String, String> metadata)
@@ -560,5 +572,14 @@ namespace Tebex.Adapters
         }
         
         #endregion
+
+        /// <summary>
+        /// OnProcessExit is called when the app is closing, either via signal or Environment.Exit(). We clear our pending
+        /// plugin logs when the process exits.
+        /// </summary>
+        public static void OnProcessExit(object sender, EventArgs e)
+        {
+            PluginEvent.SendAllEvents(BaseTebexAdapter.Instance);
+        }
     }
 }

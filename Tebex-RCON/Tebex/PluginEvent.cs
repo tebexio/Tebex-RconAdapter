@@ -17,6 +17,8 @@ namespace Tebex.Triage
     /// </summary>
     public class PluginEvent
     {
+        public static List<PluginEvent> PLUGIN_EVENTS = new List<PluginEvent>();
+        
         // Data attached to all plugin events, set via Init()
         public static string SERVER_IP = "";
         public static string SERVER_ID = "";
@@ -85,9 +87,16 @@ namespace Tebex.Triage
                 return;
             }
 
-            List<PluginEvent> eventsList = new List<PluginEvent>();
-            eventsList.Add(this);
-            adapter.MakeWebRequest("https://plugin-logs.tebex.io/events", JsonConvert.SerializeObject(eventsList), TebexApi.HttpVerb.POST,
+            PLUGIN_EVENTS.Add(this);
+            if (PLUGIN_EVENTS.Count >= 10)
+            {
+                SendAllEvents(adapter);
+            }
+        }
+
+        public static void SendAllEvents(BaseTebexAdapter adapter)
+        {
+            adapter.MakeWebRequest("https://plugin-logs.tebex.io/events", JsonConvert.SerializeObject(PLUGIN_EVENTS), TebexApi.HttpVerb.POST,
                 (code, body) =>
                 {
                     if (code < 300 && code > 199) // success

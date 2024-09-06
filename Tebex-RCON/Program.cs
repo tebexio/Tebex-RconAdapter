@@ -9,7 +9,10 @@ var startupKey = "";
 var startupHost = "";
 var startupPort = "";
 var startupPass = "";
-var startupDebug = "false";
+var startupDebug = "true";
+
+// Set up handler for exit so plugin events are emptied on any exit
+AppDomain.CurrentDomain.ProcessExit += TebexRconAdapter.OnProcessExit;
 
 // Convert command line arguments to a list
 List<string> arguments = args.ToList();
@@ -153,7 +156,6 @@ while (true)
     RconConnection rcon = adapter.GetRcon();
     if (rcon.Polls()) // polling connections will continually output received data to log, so we won't try to receive next and get stuck.
     {
-        
         var command = rcon.Send(input);
         adapter.LogInfo(command.ToString());
     }

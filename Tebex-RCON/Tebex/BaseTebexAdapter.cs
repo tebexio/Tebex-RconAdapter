@@ -10,8 +10,7 @@ namespace Tebex.Adapters
     /// </summary>
     public abstract class BaseTebexAdapter
     {
-        public static BaseTebexAdapter Instance => _adapterInstance.Value;
-        private static readonly Lazy<BaseTebexAdapter> _adapterInstance = new Lazy<BaseTebexAdapter>();
+        public static BaseTebexAdapter Instance { get; protected set; }
         
         public static TebexConfig PluginConfig { get; set; } = new TebexConfig();
         
