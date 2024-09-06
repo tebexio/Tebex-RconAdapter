@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System.Collections.Concurrent;
+using Newtonsoft.Json;
 using Tebex.Adapters;
 using Tebex.API;
 using Tebex.RCON.Protocol;
@@ -17,7 +18,7 @@ namespace Tebex.Triage
     /// </summary>
     public class PluginEvent
     {
-        public static List<PluginEvent> PLUGIN_EVENTS = new List<PluginEvent>();
+        public static ConcurrentQueue<PluginEvent> PLUGIN_EVENTS = new ConcurrentQueue<PluginEvent>();
         
         // Data attached to all plugin events, set via Init()
         public static string SERVER_IP = "";
@@ -87,13 +88,18 @@ namespace Tebex.Triage
                 return;
             }
 
-            PLUGIN_EVENTS.Add(this);
+            PLUGIN_EVENTS.Enqueue(this);
             if (PLUGIN_EVENTS.Count >= 10)
             {
                 SendAllEvents(adapter);
             }
         }
 
+        /// <summary>
+        /// SendAllEvents will attempt to send all queued plugin events. If we have too many to send (we receive 413 Request Content Too Large)
+        /// then we will batch the events we need to send in <see cref="_trySendTooLargeEvents"/>
+        /// </summary>
+        /// <param name="adapter"></param>
         public static void SendAllEvents(BaseTebexAdapter adapter)
         {
             adapter.MakeWebRequest("https://plugin-logs.tebex.io/events", JsonConvert.SerializeObject(PLUGIN_EVENTS), TebexApi.HttpVerb.POST,
@@ -103,6 +109,10 @@ namespace Tebex.Triage
                     {
                         adapter.LogDebug("Successfully sent plugin events");
                         return;
+                    }
+                    else if (code == 413) // Request Entity Too Large can occur with especially large event groups
+                    {
+                        _trySendTooLargeEvents(adapter);
                     }
                     
                     adapter.LogDebug("Failed to send plugin logs. Unexpected response code: " + code);
@@ -114,6 +124,68 @@ namespace Tebex.Triage
                 {
                     adapter.LogDebug("Failed to send plugin logs. Unexpected server error: " + pluginLogsServerErrorResponse);
                 });
+        }
+
+        /// <summary>
+        /// SendSpecificEvents will send the provided list of events to our plugin logs system.
+        /// </summary>
+        /// <param name="adapter">The adapter sending the events</param>
+        /// <param name="events">A list of <see cref="PluginEvent"/>s</param>
+        public static void SendSpecificEvents(BaseTebexAdapter adapter, List<PluginEvent> events)
+        {
+            adapter.MakeWebRequest("https://plugin-logs.tebex.io/events", JsonConvert.SerializeObject(events), TebexApi.HttpVerb.POST,
+                (code, body) =>
+                {
+                    if (code < 300 && code > 199) // success
+                    {
+                        adapter.LogDebug("Successfully sent batched plugin events");
+                        return;
+                    }
+                    
+                    adapter.LogDebug("Failed to send batched plugin events. Unexpected response code: " + code);
+                    adapter.LogDebug(body);
+                }, (pluginLogsApiError) =>
+                {
+                    adapter.LogDebug("Failed to send batched plugin events. Unexpected Tebex API error: " + pluginLogsApiError);
+                }, (pluginLogsServerErrorCode, pluginLogsServerErrorResponse) =>
+                {
+                    adapter.LogDebug("Failed to send batched plugin events. Unexpected server error: " + pluginLogsServerErrorResponse);
+                });
+        }
+        
+        /// <summary>
+        /// _trySendTooLargeEvents handles situations where we have too many events to send to Tebex leading to a 413 Request Content Too Large error.
+        /// This batches events in groups of 5 until the events queue is empty.
+        /// </summary>
+        /// <param name="adapter">The adapter sending the events</param>
+        private static void _trySendTooLargeEvents(BaseTebexAdapter adapter)
+        {
+            List<PluginEvent> eventsBatch = new List<PluginEvent>();
+            while (PLUGIN_EVENTS.Count > 0)
+            {
+                PluginEvent? eventToSend;
+                var dequeueSuccess = PLUGIN_EVENTS.TryDequeue(out eventToSend);
+                if (!dequeueSuccess || eventToSend == null)
+                {
+                    adapter.LogDebug("failed to dequeue plugin event");
+                    continue;                   
+                }
+                
+                eventsBatch.Add(eventToSend);
+
+                // Batch in groups of 5
+                if (eventsBatch.Count >= 5)
+                {
+                    SendSpecificEvents(adapter, eventsBatch);
+                    eventsBatch.Clear();
+                }
+            }
+
+            // Any events still left in the list, send them
+            if (eventsBatch.Count > 0)
+            {
+                SendSpecificEvents(adapter, eventsBatch);
+            }
         }
     }
 }

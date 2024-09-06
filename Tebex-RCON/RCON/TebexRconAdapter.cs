@@ -579,7 +579,7 @@ namespace Tebex.Adapters
         /// </summary>
         public static void OnProcessExit(object sender, EventArgs e)
         {
-            PluginEvent.SendAllEvents(BaseTebexAdapter.Instance);
+            PluginEvent.SendAllEvents(Instance);
         }
     }
 }
