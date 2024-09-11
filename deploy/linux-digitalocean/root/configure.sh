@@ -36,18 +36,6 @@ rcon_port=$(validate_port "$rcon_port")
 # Ask for Rcon Password
 rcon_password=$(validate_input "" "Enter RCON Password: ")
 
-# Ask for the game
-game=$(validate_input "" "Enter Game ID (7d2d,conanexiles): ")
-
-# Update the JSON configuration file
-#jq --arg sk "$secret_key" \
-#   --arg rip "$rcon_ip" \
-#   --argjson rport "$rcon_port" \
-#   --arg rpass "$rcon_password" \
-#   '.SecretKey = $sk | .RconIp = $rip | .RconPort = $rport | .RconPassword = $rpass' \
-#   Tebex-RCONAdapter/linux-x64/tebex-config.json > temp.json && mv temp.json Tebex-RCONAdapter/linux-x64/tebex-config.json
-#echo "Configuration updated successfully."
-
 mkdir -p /etc/systemd/system/Tebex-RCONAdapter.service.d/
 echo "[Service]" > /etc/systemd/system/Tebex-RCONAdapter.service.d/myenv.conf
 echo "Environment=\"RCON_ADAPTER_GAME=$game\"" >> /etc/systemd/system/Tebex-RCONAdapter.service.d/myenv.conf

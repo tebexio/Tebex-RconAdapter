@@ -39,6 +39,10 @@ public class RconConnection
         Tcp = new TcpClient();
         try
         {
+            // 10 second timeout
+            Tcp.ReceiveTimeout = 1000 * 10;
+            Tcp.SendTimeout = 1000 * 10;
+            
             Tcp.Connect(Host, Port);
             Stream = Tcp.GetStream();
             return Auth();

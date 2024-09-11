@@ -9,7 +9,7 @@ var startupKey = "";
 var startupHost = "";
 var startupPort = "";
 var startupPass = "";
-var startupDebug = "true";
+var startupDebug = "false";
 
 // Set up handler for exit so plugin events are emptied on any exit
 AppDomain.CurrentDomain.ProcessExit += TebexRconAdapter.OnProcessExit;
