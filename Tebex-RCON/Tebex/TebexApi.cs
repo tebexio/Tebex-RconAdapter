@@ -3,6 +3,9 @@ using Tebex.Adapters;
 
 namespace Tebex.API
 {
+    /// <summary>
+    /// TebexApi is a client implementation of the Tebex Plugin API providing the model definitions and the endpoints available.
+    /// </summary>
     public class TebexApi
     {
         public static readonly string TebexApiBase = "https://plugin.tebex.io/";
@@ -24,7 +27,6 @@ namespace Tebex.API
             adapter.Init();
         }
         
-        // Used so that we don't depend on Oxide
         public enum HttpVerb
         {
             DELETE,
@@ -211,8 +213,9 @@ namespace Tebex.API
 
         public delegate void Callback(int code, string body);
 
-        public void Information(ApiSuccessCallback success, ApiErrorCallback error = null, ServerErrorCallback serverError = null) {
-            Send("information", "", HttpVerb.GET, success, error, serverError);
+        public void Information(ApiSuccessCallback success, ApiErrorCallback error = null)
+        {
+            Send("information", "", HttpVerb.GET, success, error);
         }
 
         #endregion
@@ -220,8 +223,8 @@ namespace Tebex.API
         #region Command Queue
 
         /**
-             * Response received from /queue
-             */
+         * Response received from /queue
+         */
         public class CommandQueueResponse
         {
             [JsonProperty("meta")] public CommandQueueMeta Meta { get; set; }
@@ -229,8 +232,8 @@ namespace Tebex.API
         }
 
         /**
-             * Metadata received from /queue
-             */
+         * Metadata received from /queue
+         */
         public class CommandQueueMeta
         {
             [JsonProperty("execute_offline")] public bool ExecuteOffline { get; set; }
@@ -241,8 +244,8 @@ namespace Tebex.API
         }
 
         /**
-             * A due player is one returned by /queue to indicate we have some commands to run.
-             */
+         * A due player is one returned by /queue to indicate we have some commands to run.
+         */
         public class DuePlayer
         {
             [JsonProperty("id")] public int Id { get; set; }
@@ -254,8 +257,8 @@ namespace Tebex.API
 
 
         /**
-             * The response recieved from /queue/online-commands
-             */
+         * The response received from /queue/online-commands
+         */
         public class OnlineCommandsResponse
         {
             [JsonProperty("player")] public OnlineCommandsPlayer Player { get; set; }
@@ -296,16 +299,16 @@ namespace Tebex.API
             [JsonProperty("id")] public int Id { get; set; }
             [JsonProperty("command")] public string CommandToRun { get; set; } = "";
             [JsonProperty("payment")] public long Payment { get; set; }
-            [JsonProperty("package", NullValueHandling=NullValueHandling.Ignore)] public long PackageRef { get; set; }
+            [JsonProperty(NullValueHandling=NullValueHandling.Ignore)] public long PackageRef { get; set; }
             [JsonProperty("conditions")] public CommandConditions Conditions { get; set; } = new CommandConditions();
             [JsonProperty("player")] public PlayerInfo Player { get; set; }
         }
 
         /**
-             * List the players who have commands due to be executed when they next login to the game server.
-             * This endpoint also returns any offline commands to be processed and the amount of seconds to wait before performing the queue check again.
-             * All clients should strictly follow the response of `next_check`, failure to do so would result in your secret key being revoked or IP address being banned from accessing the API.
-             */
+         * List the players who have commands due to be executed when they next login to the game server.
+         * This endpoint also returns any offline commands to be processed and the amount of seconds to wait before performing the queue check again.
+         * All clients should strictly follow the response of `next_check`, failure to do so would result in your secret key being revoked or IP address being banned from accessing the API.
+         */
         public void GetCommandQueue(ApiSuccessCallback onSuccess = null, ApiErrorCallback onApiError = null,
             ServerErrorCallback onServerError = null)
         {
@@ -313,8 +316,8 @@ namespace Tebex.API
         }
 
         /**
-             * Gets commands that can be executed on the player even if they are offline.
-             */
+         * Gets commands that can be executed on the player even if they are offline.
+         */
         public void GetOfflineCommands(ApiSuccessCallback onSuccess = null, ApiErrorCallback onApiError = null,
             ServerErrorCallback onServerError = null)
         {
@@ -322,8 +325,8 @@ namespace Tebex.API
         }
 
         /**
-             * Gets commands that can be executed for the given player if they are online.
-             */
+         * Gets commands that can be executed for the given player if they are online.
+         */
         public void GetOnlineCommands(int playerId, ApiSuccessCallback onSuccess, ApiErrorCallback onApiError = null,
             ServerErrorCallback onServerError = null)
         {
@@ -333,16 +336,16 @@ namespace Tebex.API
         private class DeleteCommandsPayload
         {
             /**
-                 * An array of one or more command IDs to delete.
-                 */
+             * An array of one or more command IDs to delete.
+             */
             [JsonProperty("ids")]
             public int[] Ids { get; set; }
         }
 
         /**
-             * Deletes one or more commands that have been executed on the game server.
-             * An empty response with the status code of 204 No Content will be returned on completion.
-             */
+         * Deletes one or more commands that have been executed on the game server.
+         * An empty response with the status code of 204 No Content will be returned on completion.
+         */
         public void DeleteCommands(int[] ids, ApiSuccessCallback onSuccess, ApiErrorCallback onApiError = null,
             ServerErrorCallback onServerError = null)
         {
@@ -359,17 +362,17 @@ namespace Tebex.API
         #region Listing
 
         /**
-             * Response from /listing containing the categories and their packages.
-             */
+         * Response from /listing containing the categories and their packages.
+         */
         public class ListingsResponse
         {
             [JsonProperty("categories")] public List<Category> categories { get; set; }
         }
 
         /**
-             * Get the categories and packages which should be displayed to players in game. The returned order of this endpoint
-             * does not reflect the desired order of the category/packages - please order based on the order object.
-             */
+         * Get the categories and packages which should be displayed to players in game. The returned order of this endpoint
+         * does not reflect the desired order of the category/packages - please order based on the order object.
+         */
         public void GetListing(ApiSuccessCallback onSuccess = null, ApiErrorCallback onError = null,
             ServerErrorCallback onServerError = null)
         {
@@ -381,9 +384,9 @@ namespace Tebex.API
         #region Packages
 
         /**
-             * Get a list of all packages on the webstore. Pass verbose=true to include descriptions of the packages.
-             * API returns a list of JSON encoded Packages.
-             */
+         * Get a list of all packages on the webstore. Pass verbose=true to include descriptions of the packages.
+         * API returns a list of JSON encoded Packages.
+         */
         public void GetAllPackages(bool verbose, ApiSuccessCallback onSuccess = null,
             ApiErrorCallback onApiError = null,
             ServerErrorCallback onServerError = null)
@@ -393,8 +396,8 @@ namespace Tebex.API
         }
 
         /**
-             * Gets a specific package from the webstore by its ID. Returns JSON-encoded Package object.
-             */
+         * Gets a specific package from the webstore by its ID. Returns JSON-encoded Package object.
+         */
         public void GetPackage(string packageId, ApiSuccessCallback onSuccess = null,
             ApiErrorCallback onApiError = null,
             ServerErrorCallback onServerError = null)
@@ -440,8 +443,8 @@ namespace Tebex.API
         }
 
         /**
-             * Retrieve the latest payments (up to a maximum of 100) made on the webstore.
-             */
+         * Retrieve the latest payments (up to a maximum of 100) made on the webstore.
+         */
         public void GetAllPayments(int limit = 100, ApiSuccessCallback onSuccess = null,
             ApiErrorCallback onApiError = null, ServerErrorCallback onServerError = null)
         {
@@ -460,8 +463,8 @@ namespace Tebex.API
         }
 
         /**
-             * Return all payments as a page, at the given page number.
-             */
+         * Return all payments as a page, at the given page number.
+         */
         public void GetAllPaymentsPaginated(int pageNumber, ApiSuccessCallback onSuccess = null,
             ApiErrorCallback onApiError = null, ServerErrorCallback onServerError = null)
         {
@@ -469,40 +472,13 @@ namespace Tebex.API
         }
 
         /**
-             * Retrieve a specific payment by transaction id.
-             */
+         * Retrieve a specific payment by transaction id.
+         */
         public void GetPayment(string transactionId, ApiSuccessCallback onSuccess = null,
             ApiErrorCallback onApiError = null, ServerErrorCallback onServerError = null)
         {
             Send($"payments/{transactionId}", "", HttpVerb.GET, onSuccess, onApiError, onServerError);
         }
-
-        /**
-            // Returns an array of fields (custom variables, etc) required to be entered for a manual payment to be created for a package.
-            public void GetRequiredPaymentFields(Package package)
-            {
-                //var response = client.SendAsyncRequest($"payments/fields/{package.Id}", HttpMethod.Get);
-            }
-            
-              //Create a manual payment in the same way as is possible from the control panel. One or more packages should be added to the payment,
-              //and the package commands will be processed in the same way as would be for a standard manual payment.
-                public void CreatePayment()
-                {
-                    Send($"payments", HttpMethod.Post);
-                }
-
-                // Updates a payment
-                public void UpdatePayment(string transactionId)
-                {
-                   Send($"payments/{transactionId}", HttpMethod.Put);
-                }
-
-                // Create a note against a payment.
-                public void CreatePaymentNote(string transactionId, string note)
-                {
-                   Send($"payments/{transactionId}/note", HttpMethod.Post);
-                }
-            */
 
         #endregion
 
@@ -516,8 +492,8 @@ namespace Tebex.API
         }
 
         /**
-             * Creates a URL which will take the player to a checkout area in order to purchase the given item.
-             */
+         * Creates a URL which will take the player to a checkout area in order to purchase the given item.
+         */
         public void CreateCheckoutUrl(int packageId, string username, ApiSuccessCallback success,
             ApiErrorCallback error = null)
         {
@@ -608,17 +584,6 @@ namespace Tebex.API
             Send($"coupons/{couponId}", "", HttpVerb.GET, onSuccess, onApiError, onServerError);
         }
 
-        /**
-            public void CreateCoupon(ApiSuccessCallback onSuccess = null, ApiErrorCallback onApiError = null, ServerErrorCallback onServerError = null)
-            {
-                Send("coupons", HttpMethod.Post);
-            }
-
-            public void DeleteCoupon(string couponId, ApiSuccessCallback onSuccess = null, ApiErrorCallback onApiError = null, ServerErrorCallback onServerError = null)
-            {
-               Send($"gift-cards/{couponId}", HttpMethod.Delete);
-            }*/
-
         #endregion
 
         #region Bans
@@ -668,8 +633,8 @@ namespace Tebex.API
         #region Player Lookup
 
         /**
-             * Root object returned by the /user endpoint, containing PlayerInfo
-             */
+         * Root object returned by the /user endpoint, containing PlayerInfo
+         */
         public class UserInfoResponse
         {
             [JsonProperty("player")] public PlayerInfo Player { get; set; }
@@ -697,8 +662,8 @@ namespace Tebex.API
         }
 
         /**
-             * A player's information returned by the /user endpoint
-             */
+         * A player's information returned by the /user endpoint
+         */
         public class PlayerInfo
         {
             [JsonProperty("id")] public string Id { get; set; }

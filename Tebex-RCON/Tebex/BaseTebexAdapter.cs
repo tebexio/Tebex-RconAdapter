@@ -1,67 +1,75 @@
-using System.Net;
 using Newtonsoft.Json;
 using Tebex.API;
-using Tebex.Triage;
+using Tebex.Util;
 
 namespace Tebex.Adapters
 {
-    /** Provides logic for Tebex operations via the Tebex Plugin API */
+    /// <summary>
+    /// BaseTebexAdapter implements the common logic platform for interacting with the Tebex API. Multiple types of Adapters can
+    /// be created which handle logic for specific games, frameworks, or environments.
+    /// </summary>
     public abstract class BaseTebexAdapter
     {
-        public static BaseTebexAdapter Instance => _adapterInstance.Value;
-        private static readonly Lazy<BaseTebexAdapter> _adapterInstance = new Lazy<BaseTebexAdapter>();
-
+        public static BaseTebexAdapter Instance { get; protected set; }
+        
         public static TebexConfig PluginConfig { get; set; } = new TebexConfig();
         
-        /** For rate limiting command queue based on next_check */
+        // For our timed functions, this is when each function can run next.
         private static DateTime _nextCheckCommandQueue = DateTime.Now;
-        
-        // Time checks for our plugin timers.
         private static DateTime _nextCheckDeleteCommands = DateTime.Now;
         private static DateTime _nextCheckJoinQueue = DateTime.Now;
         private static DateTime _nextCheckRefresh = DateTime.Now;
-
+        
+        // Player join and leave events
         private static List<TebexApi.TebexJoinEventInfo> _eventQueue = new List<TebexApi.TebexJoinEventInfo>();
         
-        /** For storing successfully executed commands and deleting them from API */
-        protected static readonly List<TebexApi.Command> ExecutedCommands = new List<TebexApi.Command>();
+        // Successfully executed commands sent to DELETE /commands
+        private static readonly List<TebexApi.Command> _executedCommands = new List<TebexApi.Command>();
 
-        /** Allow pausing all web requests if rate limits are received from remote */
-        protected bool IsRateLimited = false;
+        // Pauses all web requests when we're rate limited
+        public bool IsRateLimited { get; private set; } = false;
         
+        /// <summary>
+        /// Init is the main entry point for any Tebex Adapter. All loading, setup, initialization, and timers
+        /// be triggered here to enable Tebex.
+        /// </summary>
         public abstract void Init();
 
+        /// <summary>
+        /// Removes any executed commands from the command queue.
+        /// </summary>
+        /// <param name="ignoreWaitCheck">True if we should ignore any current wait timers. This can lead to rate limiting if enabled.</param>
         public void DeleteExecutedCommands(bool ignoreWaitCheck = false)
         {
-            if (!IsConnected()) return;
-            
             LogDebug("Deleting executed commands...");
-            
             if (!CanProcessNextDeleteCommands() && !ignoreWaitCheck)
             {
                 LogDebug("Skipping check for completed commands - not time to be processed");
                 return;
             }
             
-            if (ExecutedCommands.Count == 0)
+            if (_executedCommands.Count == 0)
             {
                 LogDebug("  No commands to flush.");
                 return;
             }
 
-            LogDebug($"  Found {ExecutedCommands.Count} commands to flush.");
+            // Reset next check for deleting commands
+            _nextCheckDeleteCommands = DateTime.Now.AddSeconds(60);
+            LogDebug($"  Found {_executedCommands.Count} commands to flush.");
 
+            // Build a list of command IDs from the commands we have stored
             List<int> ids = new List<int>();
-            foreach (var command in ExecutedCommands)
+            foreach (var command in _executedCommands)
             {
                 ids.Add(command.Id);
             }
-
-            _nextCheckDeleteCommands = DateTime.Now.AddSeconds(45);
+            
+            // Send the commands we want to delete to Tebex
             TebexApi.Instance.DeleteCommands(ids.ToArray(), (code, body) =>
             {
-                LogInfo("Successfully flushed completed commands.");
-                ExecutedCommands.Clear();
+                LogDebug("Successfully flushed completed commands.");
+                _executedCommands.Clear();
             }, (error) =>
             {
                 LogError($"Failed to flush completed commands: {error.ErrorMessage}");
@@ -71,57 +79,113 @@ namespace Tebex.Adapters
                 LogError(body);
             });
         }
+        
+        /// <summary>
+        /// Logs a warning to server console and log. An alert is a "warning" if it can be resolved by the user and/or time.
+        /// All warnings require a solution which explain to the user what should be done to stop the warning. If enabled,
+        /// warnings should be queued and sent to Tebex.
+        /// </summary>
+        /// <param name="message">User-friendly warning message shown to the user.</param>
+        /// <param name="solution">Potential solution which resolves the warning message.</param>
+        public abstract void LogWarning(string message, string solution);
 
-        /**
-         * Logs a warning to the console and game log.
-         */
-        public abstract void LogWarning(string message);
+        /// <summary>
+        /// <see cref="LogWarning(string,string)"/>
+        /// </summary>
+        /// <param name="message">User-friendly warning message shown to the user.</param>
+        /// <param name="solution">Potential solution which resolves the warning message.</param>
+        /// <param name="metadata">Data to include with a plugin event sent to Tebex.</param>
+        public abstract void LogWarning(string message, string solution, Dictionary<String, String> metadata);
 
-        /**
-         * Logs an error to the console and game log.
-         */
+        /// <summary>
+        /// Logs an error to server console and log. An alert is an "error" if it cannot be resolved by the user at
+        /// runtime. Errors do not require solutions like warnings. If enabled, errors should be queued and sent to Tebex.
+        /// </summary>
+        /// <param name="message">User-friendly error message shown to the user.</param>
         public abstract void LogError(string message);
 
-        /**
-             * Logs information to the console and game log.
-             */
+        /// <summary>
+        /// <see cref="LogError(string)"/>
+        /// </summary>
+        /// <param name="message">User-friendly error message shown to the user.</param>
+        /// <param name="metadata">Data to include with a plugin event sent to Tebex.</param>
+        public abstract void LogError(string message, Dictionary<String, String> metadata);
+        
+        /// <summary>
+        /// Logs general information to the console and game log.
+        /// </summary>
+        /// <param name="message">User-friendly message to show to the user.</param>
         public abstract void LogInfo(string message);
 
-        /**
-             * Logs debug information to the console and game log if debug mode is enabled.
-             */
+        /// <summary>
+        /// If debug mode is enabled, logs information to the console and game log.
+        /// </summary>
+        /// <param name="message">The message to log.</param>
         public abstract void LogDebug(string message);
 
-        public void OnUserConnected(string steam64Id, string ip)
+        /// <summary>
+        /// Records a user joining a server.
+        /// </summary>
+        /// <param name="accountId">steam64Id or other identifying information about the user who joined</param>
+        /// <param name="ip">The joining user's IP address</param>
+        public void OnUserConnected(string accountId, string ip)
         {
-            var joinEvent = new TebexApi.TebexJoinEventInfo(steam64Id, "server.join", DateTime.Now, ip);
+            var joinEvent = new TebexApi.TebexJoinEventInfo(accountId, "server.join", DateTime.Now, ip);
             _eventQueue.Add(joinEvent);
-
-            // If we're already over a threshold, go ahead and send the events.
-            if (_eventQueue.Count > 10) //TODO make configurable?
+            
+            // Joins are cleared on a timer but are also sent at max 10 at a time to prevent huge requests for large servers.
+            if (_eventQueue.Count > 10) 
             {
-                ProcessJoinQueue();
+                ProcessJoinQueue(true);
             }
         }
         
+        /// <summary>
+        /// Main configuration class for a Tebex integration using the Tebex Adapter.
+        /// </summary>
         public class TebexConfig
         {
-            // Enables additional debug logging, which may show raw user info in console.
+            /// <summary>
+            /// Enables additional debug logging. Raw user info may be written to file and or console.
+            /// </summary>
             public bool DebugMode = false;
 
-            // Automatically sends detected issues to Tebex 
+            /// <summary>
+            /// If true, any Warning events written won't be sent to Tebex
+            /// </summary>
+            public bool SuppressWarnings = false;
+
+            /// <summary>
+            /// If true, any Error events written won't be sent to Tebex.
+            /// </summary>
+            public bool SuppressErrors = false;
+            
             public bool AutoReportingEnabled = true;
             
-            //public bool AllowGui = false;
+            /// <summary>
+            /// The store's Tebex secret key
+            /// </summary>
             public string SecretKey = "";
+            
+            /// <summary>
+            /// In minutes, how long any cached objects are valid for by default
+            /// </summary>
             public int CacheLifetime = 30;
             
-            // RCON specific
+            #region Game Specific Configration
+            
+            // These change based on the app or game being implemented 
             public string RconIp = "127.0.0.1";
             public int RconPort = 27805;
             public string RconPassword = "";
+            
+            #endregion
         }
         
+        /// <summary>
+        /// Standard key-value Cache implemented by an underlying Dictionary. Contains <see cref="CachedObject"/>s which wrap the
+        /// original object around an expiration time.
+        /// </summary>
         public class Cache
         {
             public static Cache Instance => _cacheInstance.Value;
@@ -157,10 +221,16 @@ namespace Tebex.Adapters
             }
         }
 
+        /// <summary>
+        /// An object stored in the cache. Contains an expiration time after which the object is no longer considered valid.
+        /// </summary>
         public class CachedObject
         {
-            public object Value { get; private set; }
-            private DateTime _expires;
+            /// <summary>
+            /// The object that was originally cached
+            /// </summary>
+            public object Value { get; }
+            private readonly DateTime _expires;
 
             public CachedObject(object obj, int minutesValid)
             {
@@ -174,13 +244,25 @@ namespace Tebex.Adapters
             }
         }
         
-        /** Callback type to use /information response */
+        #region Callback Types
+        
+        // Callback types representing responses received from various API calls
+        public delegate void CreateCheckoutUrlResponse(TebexApi.CheckoutUrlPayload checkoutUrl);
+        public delegate void GetGiftCardsResponse(List<TebexApi.GiftCard> giftCards);
+        public delegate void GetGiftCardByIdResponse(TebexApi.GiftCard giftCards);
         public delegate void FetchStoreInfoResponse(TebexApi.TebexStoreInfo info);
+        public delegate void GetCategoriesResponse(List<TebexApi.Category> categories);
+        public delegate void GetPackagesResponse(List<TebexApi.Package> packages);
+        
+        #endregion
 
-        /**
-             * Returns the store's /information payload. Info is cached according to configured cache lifetime.
-             */
-        public void FetchStoreInfo(FetchStoreInfoResponse response, TebexApi.ApiErrorCallback onError = null, TebexApi.ServerErrorCallback onServerError = null)
+        /// <summary>
+        /// Retrieves the <see cref="TebexApi.TebexStoreInfo"/> associated with our store. If store information is already
+        /// cached and still valid, the cached information is returned.
+        /// </summary>
+        /// <param name="response">Handler function for successful information retrieval</param>
+        /// <param name="apiErrorCallback">Handler function for when an API error occurs (wrong key)</param>
+        public void FetchStoreInfo(FetchStoreInfoResponse response, TebexApi.ApiErrorCallback apiErrorCallback)
         {
             if (Cache.Instance.HasValid("information"))
             {
@@ -188,34 +270,32 @@ namespace Tebex.Adapters
             }
             else
             {
+                // Query Tebex API for store information
                 TebexApi.Instance.Information((code, body) =>
                 {
+                    // Convert received response to TebexStoreInfo 
                     var storeInfo = JsonConvert.DeserializeObject<TebexApi.TebexStoreInfo>(body);
                     if (storeInfo == null)
                     {
-                        LogError("> Failed to parse fetched store information.");
-                        LogError(body);
+                        LogError("Failed to parse fetched store information!", new Dictionary<string, string>()
+                        {
+                            {"response", body},
+                        });
                         return;
                     }
-
+                    
+                    // Our response handler function will be passed the store info for handling
                     Cache.Instance.Set("information", new CachedObject(storeInfo, PluginConfig.CacheLifetime));
                     response?.Invoke(storeInfo);
-                }, tebexError =>
-                {
-                    LogError($"> Tebex responded with error while getting store information: {tebexError.ErrorMessage}");
-                    onError?.Invoke(tebexError);
-                }, (code, message) =>
-                {
-                    LogError("> Got server error while getting store information.");
-                    LogError(message);
-                    onServerError?.Invoke(code, message);
-                });
+                }, apiErrorCallback);
             }
         }
 
-        /** Callback type for response from creating checkout url */
-        public delegate void CreateCheckoutUrlResponse(TebexApi.CheckoutUrlPayload checkoutUrl);
-
+        /// <summary>
+        /// Retrieves the <see cref="TebexApi.Package"> associated with the given short code or ID value./>
+        /// </summary>
+        /// <param name="value">A short code (P1, P2, etc.) or package ID (0123127244)</param>
+        /// <returns>The package associated with the given code, or null if the package was not found.</returns>
         public TebexApi.Package GetPackageByShortCodeOrId(string value)
         {
             var shortCodes = (Dictionary<String, TebexApi.Package>)Cache.Instance.Get("packageShortCodes").Value;
@@ -233,15 +313,18 @@ namespace Tebex.Adapters
                     return package;
                 }
             }
-
-            // Package not found
-            return null;
+            
+            return null; //FIXME cleaner null handling
         }
-
-        /**
-             * Refreshes cached categories and packages from the Tebex API. Can be used by commands or with no arguments
-             * to update the information while the server is idle.
-             */
+        
+        /// <summary>
+        /// Refreshes cached categories and packages from the Tebex API. Can be used by commands or with no arguments to
+        /// update the information while the server is idle.
+        /// </summary>
+        /// <param name="onSuccess">
+        /// Handler function triggered when a successful response is received. This is a basic API success including
+        /// the HTTP response code and response body which can be deserialized into the appropriate data type.
+        /// </param>
         public void RefreshListings(TebexApi.ApiSuccessCallback onSuccess = null)
         {
             // Get our categories from the /listing endpoint as it contains all category data
@@ -250,8 +333,10 @@ namespace Tebex.Adapters
                 var response = JsonConvert.DeserializeObject<TebexApi.ListingsResponse>(body);
                 if (response == null)
                 {
-                    LogError("Could not get refresh all listings! Response body from API follows:");
-                    LogError(body);
+                    LogError("Could not get refresh all listings!", new Dictionary<string, string>()
+                    {
+                        {"response", body},
+                    });
                     return;
                 }
 
@@ -269,14 +354,20 @@ namespace Tebex.Adapters
                 var response = JsonConvert.DeserializeObject<List<TebexApi.Package>>(body);
                 if (response == null)
                 {
-                    LogError("Could not get refresh package listings! Response body from API follows:");
-                    LogError(body);
+                    LogError("Could not refresh package listings!", new Dictionary<string, string>()
+                    {
+                        {"response", body}
+                    });
                     return;
                 }
 
                 Cache.Instance.Set("packages", new CachedObject(response, PluginConfig.CacheLifetime));
 
-                // Generate and save shortcodes for each package
+                /*
+                 * Generates and saves shortcodes for each package. Shortcodes are "P1", "P2", etc...
+                 * Packages can be displayed and purchased with their IDs or shortcodes.
+                 * Shortcodes are generated by the order of the packages which can be set by the user in their Tebex store panel.
+                 */
                 var orderedPackages = response.OrderBy(package => package.Order).ToList();
                 var shortCodes = new Dictionary<String, TebexApi.Package>();
                 for (var i = 0; i < orderedPackages.Count; i++)
@@ -289,14 +380,12 @@ namespace Tebex.Adapters
                 onSuccess?.Invoke(code, body);
             });
         }
-
-        /** Callback type for getting all categories */
-        public delegate void GetCategoriesResponse(List<TebexApi.Category> categories);
-
-        /**
-             * Gets all categories and their packages (no description) from the API. Response is cached according to the
-             * configured cache lifetime.
-             */
+        
+        /// <summary>
+        /// Gets all package Categories associated with the store. The response is saved in the cache. Cached data is returned if it's still valid.
+        /// </summary>
+        /// <param name="onSuccess">Handler function which receives a List of <see cref="TebexApi.Category"/> on success.</param>
+        /// <param name="onServerError">Optional handler function triggered when a server error is received.</param>
         public void GetCategories(GetCategoriesResponse onSuccess,
             TebexApi.ServerErrorCallback onServerError = null)
         {
@@ -321,10 +410,11 @@ namespace Tebex.Adapters
             }
         }
 
-        /** Callback type for working with packages received from the API */
-        public delegate void GetPackagesResponse(List<TebexApi.Package> packages);
-
-        /** Gets all package info from API. Response is cached according to the configured cache lifetime. */
+        /// <summary>
+        /// Gets all <see cref="TebexApi.Package"/>s associated with the store.
+        /// </summary>
+        /// <param name="onSuccess">Handler function wich receives a List of <see cref="TebexApi.Package"/> on success.</param>
+        /// <param name="onServerError">Optional handler function triggered when server error is received.</param>
         public void GetPackages(GetPackagesResponse onSuccess,
             TebexApi.ServerErrorCallback onServerError = null)
         {
@@ -336,26 +426,27 @@ namespace Tebex.Adapters
                 }
                 else
                 {
-                    // Updates both packages and shortcodes in the cache
+                    // RefreshListings will update both packages and shortcodes in the cache
                     RefreshListings((code, body) =>
                     {
                         onSuccess.Invoke((List<TebexApi.Package>)Cache.Instance.Get("packages").Value);
                     });
                 }
             }
-            catch (Exception e) //FIXME reports of very infuriating NPE in this func
+            catch (Exception e)
             {
-                ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("Raised exception while refreshing packages", new Dictionary<string, string>
+                LogError("An error occurred while getting your store's packages. " + e.Message, new Dictionary<string, string>()
                 {
-                    {"cacheHasValid", Cache.Instance.HasValid("packages").ToString()},
-                    {"error", e.Message},
-                    {"trace", e.StackTrace}
-                }));
-                LogError("An error occurred while getting your store's packages. This has been reported automatically.");
+                    {"trace", e.StackTrace},
+                    {"message", e.Message}
+                });
             }
         }
 
-        // Periodically keeps store info updated from the API
+        /// <summary>
+        /// RefreshStoreInformation synchronizes all store information, categories, and packages between the Tebex Store and this integration.
+        /// </summary>
+        /// <param name="ignoreWaitCheck">Whether we ignore the refresh time limit. Can lead to rate limiting if enabled.</param>
         public void RefreshStoreInformation(bool ignoreWaitCheck = false)
         {
             LogDebug("Refreshing store information...");
@@ -368,13 +459,18 @@ namespace Tebex.Adapters
             }
             
             _nextCheckRefresh = DateTime.Now.AddMinutes(15);
-            FetchStoreInfo(info => { });
+            FetchStoreInfo(info => { }, (error) =>
+            {
+                LogError("Error while refreshing store information: " + error.ErrorMessage);
+            });
         }
         
+        /// <summary>
+        /// ProcessJoinQueue will send any <see cref="TebexApi.PlayerJoinEvent"/>s in the event queue to Tebex.
+        /// </summary>
+        /// <param name="ignoreWaitCheck">Whether we can ignore the join queue time limit. Can lead to rate limiting if enabled.</param>
         public void ProcessJoinQueue(bool ignoreWaitCheck = false)
         {
-            if (!IsConnected()) return;
-            
             LogDebug("Processing player join queue...");
             
             if (!CanProcessNextJoinQueue() && !ignoreWaitCheck)
@@ -383,7 +479,7 @@ namespace Tebex.Adapters
                 return;
             }
             
-            _nextCheckJoinQueue = DateTime.Now.AddSeconds(45);
+            _nextCheckJoinQueue = DateTime.Now.AddSeconds(60);
             if (_eventQueue.Count > 0)
             {
                 LogDebug($"  Found {_eventQueue.Count} join events.");
@@ -393,21 +489,15 @@ namespace Tebex.Adapters
                         _eventQueue.Clear();
                     }, error =>
                     {
-                        ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("API error while processing join queue", new Dictionary<string, string>()
-                        {
-                            {"error",error.ErrorMessage},
-                        }));
                         LogError($"Could not process join queue - error response from API: {error.ErrorMessage}");
                     },
                     (code, body) =>
                     {
-                        ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("Server error while processing join queue", new Dictionary<string, string>()
+                        LogError("Could not process join queue - unexpected server error.", new Dictionary<string, string>()
                         {
-                            {"code",code.ToString()},
-                            {"responseBody",body},
-                        }));
-                        LogError("Could not process join queue - unexpected server error.");
-                        LogError(body);
+                            {"response", body},
+                            {"code", code.ToString()},
+                        });
                     });
             }
             else // Empty queue
@@ -416,26 +506,10 @@ namespace Tebex.Adapters
             }
         }
         
-        public bool CanProcessNextCommandQueue()
-        {
-            return DateTime.Now > _nextCheckCommandQueue;
-        }
-
-        public bool CanProcessNextDeleteCommands()
-        {
-            return DateTime.Now > _nextCheckDeleteCommands;
-        }
-        
-        public bool CanProcessNextJoinQueue()
-        {
-            return DateTime.Now > _nextCheckJoinQueue;
-        }
-        
-        public bool CanProcessNextRefresh()
-        {
-            return DateTime.Now > _nextCheckRefresh;
-        }
-        
+        /// <summary>
+        /// ProcessCommandQueue retrieves pending offline (instant) and online (player must be logged in) commands from Tebex and executes them. 
+        /// </summary>
+        /// <param name="ignoreWaitCheck">Whether we can ignore the command queue time limit. Can lead to rate limiting if enabled.</param>
         public void ProcessCommandQueue(bool ignoreWaitCheck = false)
         {
             LogDebug("Processing command queue...");
@@ -447,86 +521,106 @@ namespace Tebex.Adapters
                 return;
             }
 
-            // Get the state of the command queue
+            // Get the current state of the command queue from Tebex.
             TebexApi.Instance.GetCommandQueue((cmdQueueCode, cmdQueueResponseBody) =>
             {
-                var response = JsonConvert.DeserializeObject<TebexApi.CommandQueueResponse>(cmdQueueResponseBody);
-                if (response == null)
+                var commandQueue = JsonConvert.DeserializeObject<TebexApi.CommandQueueResponse>(cmdQueueResponseBody);
+                if (commandQueue == null)
                 {
-                    LogError("Failed to get command queue. Could not parse response from API. Response body follows:");
-                    LogError(cmdQueueResponseBody);
+                    LogError("Failed to get command queue. Could not parse response from API.", new Dictionary<string, string>()
+                    {
+                        {"response", cmdQueueResponseBody},
+                        {"code", cmdQueueCode.ToString()},
+                    });
                     return;
                 }
 
-                // Set next available check time
-                _nextCheckCommandQueue = DateTime.Now.AddSeconds(response.Meta.NextCheck);
+                /*
+                 * On a successful response the API will tell us when we can perform our next check (after x seconds).
+                 * This can change and should be respected in order to avoid rate limits.
+                 */
+                _nextCheckCommandQueue = DateTime.Now.AddSeconds(commandQueue.Meta.NextCheck);
 
-                // Process offline commands immediately
-                if (response.Meta != null && response.Meta.ExecuteOffline)
+                /*
+                 * Process any offline commands first. Offline commands can be run instantly without requiring that a player
+                 * be on the server for a command to be executed.
+                 */
+                if (!commandQueue.Meta.ExecuteOffline)
                 {
-                    LogInfo("Requesting offline commands from API...");
+                    LogDebug("No offline commands to execute.");
+                }
+                else // We have offline commands to execute.
+                {
+                    LogDebug("Requesting offline commands from API...");
+                    
+                    // Offline commands are a one-shot request that returns all pending offline commands.
                     TebexApi.Instance.GetOfflineCommands((code, offlineCommandsBody) =>
                     {
                         var offlineCommands = JsonConvert.DeserializeObject<TebexApi.OfflineCommandsResponse>(offlineCommandsBody);
                         if (offlineCommands == null)
                         {
-                            ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("Failed to parse offline commands response body", new Dictionary<string, string>()
+                            LogError("Failed to get offline commands. Could not parse response from API.", new Dictionary<string, string>()
                             {
                                 {"code", code.ToString()},
                                 {"responseBody", offlineCommandsBody}
-                            }));
-                            LogError("Failed to get offline commands. Could not parse response from API. Response body follows:");
-                            LogError(offlineCommandsBody);
+                            });
                             return;
                         }
 
-                        LogInfo($"Found {offlineCommands.Commands.Count} offline commands to execute.");
+                        // Deserialized OfflineCommandsResponse will contain the offline commands we should run and on who.
+                        LogDebug($"Found {offlineCommands.Commands.Count} offline commands to execute.");
                         foreach (TebexApi.Command command in offlineCommands.Commands)
                         {
+                            // Each integration can implement its own handling of offline variables if variable tags are not filled by the API
                             var parsedCommand = ExpandOfflineVariables(command.CommandToRun, command.Player);
+
+                            // We split the parsed command into its components to be passed to the integration
                             var splitCommand = parsedCommand.Split(' ');
                             var commandName = splitCommand[0];
                             var args = splitCommand.Skip(1);
                             
-                            LogInfo($"Executing offline command: `{parsedCommand}`");
+                            LogDebug($"Executing offline command: `{parsedCommand}`");
+                            
+                            // ExecuteOfflineCommand will be implemented by the integration
                             ExecuteOfflineCommand(command, commandName, args.ToArray());
-                            ExecutedCommands.Add(command);
+                            
+                            _executedCommands.Add(command); //FIXME all offline commands are automatically marked successful
                         }
-                    }, (error) =>
+                        LogDebug($"Executed commands queue has {_executedCommands.Count} commands");
+                    }, (error) => // API error from offline commands
                     {
-                        ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("Error response from API while processing offline commands", new Dictionary<string, string>()
+                        LogError($"Error response from API while processing offline commands: {error.ErrorMessage}", new Dictionary<string, string>()
                         {
                             {"error",error.ErrorMessage},
                             {"errorCode", error.ErrorCode.ToString()}
-                        }));
-                        LogError($"Error response from API while processing offline commands: {error.ErrorMessage}");
-                    }, (offlineComandsCode, offlineCommandsServerError) =>
+                        });
+                    }, (offlineComandsCode, offlineCommandsServerError) => // Server error from offline commands
                     {
-                        ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("Server error from API while processing offline commands", new Dictionary<string, string>()
+                        LogError("Unexpected error response from API while processing offline commands", new Dictionary<string, string>()
                         {
                             {"code", offlineComandsCode.ToString()},
                             {"responseBody", offlineCommandsServerError}
-                        }));
-                        LogError("Unexpected error response from API while processing offline commands");
-                        LogError(offlineCommandsServerError);
+                        });
                     });
                 }
-                else
-                {
-                    LogDebug("No offline commands to execute.");
-                }
 
-                // Process any online commands 
-                LogDebug($"Found {response.Players.Count} due players in the queue");
-                foreach (var duePlayer in response.Players)
+                /*
+                 * Online commands are processed per player. Each player requires a request to the API to check for their
+                 * due commands.
+                 */
+                LogDebug($"Found {commandQueue.Players.Count} due players in the queue");
+                foreach (var duePlayer in commandQueue.Players)
                 {
                     LogDebug($"Processing online commands for player {duePlayer.Name}...");
-                    if (!IsPlayerOnline(duePlayer.UUID))
+                    
+                    // IsPlayerOnline is implemented by the integration and will implement logic for checking player online status
+                    if (!IsPlayerOnline(duePlayer))
                     {
-                        LogDebug($"Player {duePlayer.Name} has online commands but is not connected. Skipping.");
+                        LogDebug($"> Player {duePlayer.Name} has online commands but is not connected. Skipping.");
                         continue;
                     }
                     
+                    // When the player is online, we ask Tebex for the online commands pending for that player.
                     TebexApi.Instance.GetOnlineCommands(duePlayer.Id,
                         (onlineCommandsCode, onlineCommandsResponseBody) =>
                         {
@@ -535,21 +629,26 @@ namespace Tebex.Adapters
                                 JsonConvert.DeserializeObject<TebexApi.OnlineCommandsResponse>(
                                     onlineCommandsResponseBody);
                             if (onlineCommands == null)
-                            {
-                                ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("Could not parse response from API while processing online commands of player", new Dictionary<string, string>()
+                            { 
+                                LogError($"> Failed to get online commands for ${duePlayer.Name}. Could not unmarshal response from API.", new Dictionary<string, string>()
                                 {
                                     {"playerName", duePlayer.Name},
                                     {"code", onlineCommandsCode.ToString()},
                                     {"responseBody", onlineCommandsResponseBody}
-                                }));
-                                
-                                LogError($"> Failed to get online commands for ${duePlayer.Name}. Could not unmarshal response from API.");
+                                });
                                 return;
                             }
 
-                            LogInfo($"> Processing {onlineCommands.Commands.Count} commands for this player...");
+                            LogDebug($"> Processing {onlineCommands.Commands.Count} commands for this player...");
                             foreach (var command in onlineCommands.Commands)
                             {
+                                /*
+                                 * The playerRef represents a reference to the player in the game. In some games such as
+                                 * Conan Exiles, we refer to the player not by their Id or Username, but their position in the
+                                 * online players list retrieved via RCON.
+                                 *
+                                 * This is used to modify how commands are directed to players by each integration.
+                                 */
                                 object playerRef = GetPlayerRef(onlineCommands.Player.Id);
                                 if (playerRef == null)
                                 {
@@ -557,44 +656,50 @@ namespace Tebex.Adapters
                                     break;
                                 }
 
-                                var parsedCommand = ExpandUsernameVariables(command.CommandToRun, playerRef);
+                                // Each integration will implement their own ExpandUserameVariables
+                                var parsedCommand = ExpandUsernameVariables(command.CommandToRun, duePlayer);
                                 var splitCommand = parsedCommand.Split(' ');
                                 var commandName = splitCommand[0];
                                 var args = splitCommand.Skip(1);
                                 
                                 LogDebug($"Pre-execution: {parsedCommand}");
-                                ExecuteOnlineCommand(command, playerRef, commandName, args.ToArray());
+                                
+                                //ExecuteOnlineCommand is implemented by each integration
+                                var success = ExecuteOnlineCommand(command, duePlayer, commandName, args.ToArray());
+                                
                                 LogDebug($"Post-execution: {parsedCommand}");
-                                ExecutedCommands.Add(command);
+                                if (success)
+                                {
+                                    _executedCommands.Add(command);    
+                                }
                             }
                         }, tebexError => // Error for this player's online commands
                         {
-                            ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("API responded with error while processing online player's commands", new Dictionary<string, string>()
+                            LogError("Failed to get due online commands due to error response from API.", new Dictionary<string, string>()
                             {
                                 {"playerName", duePlayer.Name},
                                 {"code", tebexError.ErrorCode.ToString()},
                                 {"message", tebexError.ErrorMessage}
-                            }));
-                            
-                            LogError("Failed to get due online commands due to error response from API.");
-                            LogError(tebexError.ErrorMessage);
+                            });
                         });
                 }
             }, tebexError => // Error for get due players
             {
-                ReportAutoTriageEvent(TebexTriage.CreateAutoTriageEvent("API responded with error while getting due players", new Dictionary<string, string>()
+                LogError("Failed to get due players due to error response from API.", new Dictionary<string, string>()
                 {
                     {"code", tebexError.ErrorCode.ToString()},
                     {"message", tebexError.ErrorMessage}
-                }));
-                LogError("Failed to get due players due to error response from API.");
-                LogError(tebexError.ErrorMessage);
+                });
             });
         }
-
-        /**
-     * Creates a checkout URL for a player to purchase the given package.
-     */
+        
+        /// <summary>
+        /// Creates a payment URL for a provided package on behalf of a specific player.
+        /// </summary>
+        /// <param name="playerName">The player's username purchasing the package.</param>
+        /// <param name="package">The package to purchase.</param>
+        /// <param name="success">Handler for successful requests, provides the checkout URL and an expiry. <see cref="TebexApi.CheckoutUrlPayload"/></param>
+        /// <param name="error">Handler for API errors (package doesn't exist)</param>
         public void CreateCheckoutUrl(string playerName, TebexApi.Package package,
             CreateCheckoutUrlResponse success,
             TebexApi.ApiErrorCallback error)
@@ -610,11 +715,7 @@ namespace Tebex.Adapters
                 success?.Invoke(responsePayload);
             }, error);
         }
-
-        public delegate void GetGiftCardsResponse(List<TebexApi.GiftCard> giftCards);
-
-        public delegate void GetGiftCardByIdResponse(TebexApi.GiftCard giftCards);
-
+        
         public void GetGiftCards(GetGiftCardsResponse success, TebexApi.ApiErrorCallback error)
         {
             //TODO
@@ -625,119 +726,140 @@ namespace Tebex.Adapters
             //TODO
         }
 
-        public void BanPlayer(string playerName, string playerIp, String reason, TebexApi.ApiSuccessCallback onSuccess,
+        /// <summary>
+        /// Creates a ban for a player using the Tebex API. Players cannot be unbanned via the API and must be unbanned
+        /// from the Tebex webstore.
+        /// </summary>
+        /// <param name="playerName">The player's username.</param>
+        /// <param name="playerIp">The player's IP address.</param>
+        /// <param name="reason">A reason for the ban.</param>
+        /// <param name="onSuccess">
+        /// Handler function triggered when a successful response is received. This is a basic API success including
+        /// the HTTP response code and response body which can be deserialized into the appropriate data type.
+        /// </param>
+        /// <param name="onError">Handler function triggered when an API error occurs. A <see cref="TebexApi.TebexError"/> is provided.</param>
+        public void BanPlayer(string playerName, string playerIp, string reason, TebexApi.ApiSuccessCallback onSuccess,
             TebexApi.ApiErrorCallback onError)
         {
             TebexApi.Instance.CreateBan(reason, playerIp, playerName, onSuccess, onError);
         }
 
+        /// <summary>
+        /// Gets a user's information by ID using the Tebex API.
+        /// </summary>
+        /// <param name="userId">The player's ID or username.</param>
+        /// <param name="onSuccess">
+        /// Handler function triggered when a successful response is received. This is a basic API success including
+        /// the HTTP response code and response body which can be deserialized into the appropriate data type.
+        /// </param>
+        /// <param name="onApiError">Handler function triggered when an API error occurs. A <see cref="TebexApi.TebexError"/> is provided.</param>
+        /// <param name="onServerError">Handler function triggered when a server error occurs. The response code and body are provided.</param>
         public void GetUser(string userId, TebexApi.ApiSuccessCallback onSuccess = null,
             TebexApi.ApiErrorCallback onApiError = null, TebexApi.ServerErrorCallback onServerError = null)
         {
             TebexApi.Instance.GetUser(userId, onSuccess, onApiError, onServerError);
         }
-        
-        /**
-         * Sends a message to the given player.
-         */
-        public abstract void ReplyPlayer(object player, string message);
 
+        /// <summary>
+        /// Gets a list of the active packages associated with a customer. A list of <see cref="TebexApi.Package"/> is returned./>
+        /// </summary>
+        /// <param name="playerId">The player's ID or username.</param>
+        /// <param name="packageId">To check if a specific package is active, include its ID</param>
+        /// <param name="onSuccess">
+        /// Handler function triggered when a successful response is received. This is a basic API success including
+        /// the HTTP response code and response body which can be deserialized into the appropriate data type.
+        /// </param>
+        /// <param name="onApiError">Handler function triggered when an API error occurs. A <see cref="TebexApi.TebexError"/> is provided.</param>
+        /// <param name="onServerError">Handler function triggered when a server error occurs. The response code and body are provided.</param>
+        public void GetActivePackagesForCustomer(string playerId, int? packageId = null, TebexApi.ApiSuccessCallback onSuccess = null,
+            TebexApi.ApiErrorCallback onApiError = null, TebexApi.ServerErrorCallback onServerError = null)
+        {
+            TebexApi.Instance.GetActivePackagesForCustomer(playerId, packageId, onSuccess, onApiError, onServerError);
+        }
+
+        /// <summary>
+        /// ExecuteOfflineCommand performs the actions necessary for running a command on the server without checking player online status.
+        /// </summary>
+        /// <param name="command">A reference to the Tebex API command to run.</param>
+        /// <param name="commandName">The name of the command being run.</param>
+        /// <param name="args">A list of the command's arguments.</param>
         public abstract void ExecuteOfflineCommand(TebexApi.Command command, string commandName, string[] args);
-        public abstract void ExecuteOnlineCommand(TebexApi.Command command, object playerObj, string commandName, string[] args);
         
-        public abstract bool IsPlayerOnline(string playerRefId);
+        /// <summary>
+        /// ExecuteOnlineCommand performs a command against an online player. The player's online status should already be
+        /// validated at this point.
+        /// </summary>
+        /// <param name="command">A reference to the Tebex API command to run.</param>
+        /// <param name="player">A reference to the <see cref="TebexApi.DuePlayer"/> associated with this command.</param>
+        /// <param name="commandName">The name of the command we're running.</param>
+        /// <param name="args">A list of the command's arguments.</param>
+        /// <returns>True if the command succeeded.</returns>
+        public abstract bool ExecuteOnlineCommand(TebexApi.Command command, TebexApi.DuePlayer player, string commandName, string[] args);
+        
+        /// <summary>
+        /// IsPlayerOnline is implemented by the integration and will run the commands necessary to determine if a given
+        /// DuePlayer is currently on the server.
+        /// </summary>
+        /// <param name="duePlayer">A reference to a player that has commands due.</param>
+        /// <returns>True if the player is currently online.</returns>
+        public abstract bool IsPlayerOnline(TebexApi.DuePlayer duePlayer);
+
+        /// <summary>
+        /// GetPlayerRef is implemented by the integration, and should return the appropriate object associated with the player in-game.
+        /// In environments running external to a game (RCON) this can be overridden to enable additional handling for how commands are directed
+        /// to specific players.
+        ///
+        /// In some games such as Conan Exiles, we refer to the player not by their Id or Username, but their position
+        /// in the online players list retrieved via RCON. In that case GetPlayerRef returns the "Idx" or the player position in this list
+        /// which is used as the player's {id} for necessary commands.
+        /// </summary>
+        /// <param name="playerId">The player's current identifier, either a UUID or username.</param>
+        /// <returns>Reference to the in-game player object, if applicable, or another object to use to identify this player.</returns>
         public abstract object GetPlayerRef(string playerId);
 
+        /// <summary>
+        /// SaveConfig persists the given configuration instance.
+        /// </summary>
+        /// <param name="config"></param>
         public abstract void SaveConfig(TebexConfig config);
+        
+        /// <summary>
+        /// ExpandUsernameVariables replaces any variables in our input with the information associated with our DuePlayer.
+        /// As we support the use of different games across the Tebex Store we offer slightly different ways of getting a customer username or their ID.
+        /// All games support the same default variables, but some games may have additional variables implemented by their integration.
+        /// </summary>
+        /// <param name="input">The actual command string to be run. Will contain tags to be replaced such as {id}</param>
+        /// <param name="player">A reference to the DuePlayer this command is being run on.</param>
+        /// <returns>Parsed command string with username variables replaced.</returns>
+        public abstract string ExpandUsernameVariables(string input, TebexApi.DuePlayer player);
 
-        /**
-         * As we support the use of different games across the Tebex Store
-         * we offer slightly different ways of getting a customer username or their ID.
-         * 
-         * All games support the same default variables, but some games may have additional variables.
-         */
-        public abstract string ExpandUsernameVariables(string input, object playerObj);
-
+        /// <summary>
+        /// ExpandOfflineVariables replaces any variables in our input command with the information associated with the
+        /// offline PlayerInfo object.
+        /// </summary>
+        /// <param name="input">The actual command string being run. Will contain tags to be replaced such as {id}. Ex: "say {id} hello"</param>
+        /// <param name="info">A reference to the PlayerInfo this command is being run on.</param>
+        /// <returns>Parsed command string with username variables replaced. Ex: "say TebexDev hello"</returns>
         public abstract string ExpandOfflineVariables(string input, TebexApi.PlayerInfo info);
         
+        /// <summary>
+        /// Makes an HTTP request to Tebex. Implemented by each integration as some frameworks require usage of their
+        /// web functions instead of allowing the standard library.
+        /// </summary>
+        /// <param name="endpoint"></param>
+        /// <param name="body"></param>
+        /// <param name="verb"></param>
+        /// <param name="onSuccess"></param>
+        /// <param name="onApiError"></param>
+        /// <param name="onServerError"></param>
         public abstract void MakeWebRequest(string endpoint, string body, TebexApi.HttpVerb verb,
             TebexApi.ApiSuccessCallback onSuccess, TebexApi.ApiErrorCallback onApiError,
             TebexApi.ServerErrorCallback onServerError);
-
-        public abstract TebexTriage.AutoTriageEvent FillAutoTriageParameters(TebexTriage.AutoTriageEvent partialEvent);
-        
-        public void ReportAutoTriageEvent(TebexTriage.AutoTriageEvent autoTriageEvent)
-        {
-            if (!PluginConfig.AutoReportingEnabled)
-            {
-                return;
-            }
-            
-            // Determine store name
-            // Determine the store info, if we have it.
-            var storeName = "";
-            var storeUrl = "";
-            
-            if (Cache.Instance.HasValid("information"))
-            {
-                TebexApi.TebexStoreInfo storeInfo = (TebexApi.TebexStoreInfo)Cache.Instance.Get("information").Value;
-                storeName = storeInfo.AccountInfo.Name;
-                storeUrl = storeInfo.AccountInfo.Domain;
-            }
-
-            autoTriageEvent.StoreName = storeName;
-            autoTriageEvent.StoreUrl = storeUrl;
-            
-            // Fill missing params using the framework adapter
-            autoTriageEvent = FillAutoTriageParameters(autoTriageEvent);
-            
-            MakeWebRequest(TebexApi.TebexTriageUrl, JsonConvert.SerializeObject(autoTriageEvent),
-                TebexApi.HttpVerb.POST,
-                (code, body) =>
-                {
-                    LogDebug("Successfully submitted auto triage event");
-                }, (error) =>
-                {
-                    LogDebug("Triage API responded with error: " + error.ErrorMessage);
-                }, (code, body) =>
-                {
-                    LogDebug("Triage API encountered a server error while submitting triage event: " + body);
-                });
-        }
-
-        public void ReportManualTriageEvent(TebexTriage.ReportedTriageEvent reportedTriageEvent, TebexApi.ApiSuccessCallback onSuccess, TebexApi.ServerErrorCallback onError)
-        {
-            var storeName = "";
-            var storeUrl = "";
-            
-            if (Cache.Instance.HasValid("information"))
-            {
-                TebexApi.TebexStoreInfo storeInfo = (TebexApi.TebexStoreInfo)Cache.Instance.Get("information").Value;
-                storeName = storeInfo.AccountInfo.Name;
-                storeUrl = storeInfo.AccountInfo.Domain;
-            }
-
-            reportedTriageEvent.StoreName = storeName;
-            reportedTriageEvent.StoreUrl = storeUrl;
-            
-            MakeWebRequest(TebexApi.TebexTriageUrl, JsonConvert.SerializeObject(reportedTriageEvent),
-                TebexApi.HttpVerb.POST,
-                (code, body) =>
-                {
-                    LogDebug("Successfully submitted manual triage event");
-                    onSuccess(code, body);
-                }, (error) =>
-                {
-                    LogDebug("Triage API responded with error: " + error.ErrorMessage);
-                }, (code, body) =>
-                {
-                    LogDebug("Triage API encountered a server error while submitting manual triage event: " + body);
-                    onError(code, body);
-                });
-        }
         
         #region Commands
-
+        // These are basic command implementations usable on most integrations. Some integrations may implement additional
+        // commands or their own command handlers, dependent on the framework.
+        
         public void HandleTebexCommand(string command)
         {
             var splitCommand = command.Split(" ");
@@ -764,9 +886,6 @@ namespace Tebex.Adapters
                 case "tebex.info":
                     TebexInfoCommand();
                     break;
-                case "tebex.report":
-                    TebexReportCommand(commandArgs);
-                    break;
                 case "tebex.forcecheck":
                     TebexForceCheckCommand();
                     break;
@@ -781,51 +900,7 @@ namespace Tebex.Adapters
                     break;
             }
         }
-                
-        public void TebexReportCommand(string[] args)
-        {
-            if (args.Length == 0) // require /confirm to send
-            {
-                LogInfo("Please run `tebex.report confirm 'Your description here'` to submit your report. The following information will be sent to Tebex: ");
-                LogInfo("- Your game version, store id, and server IP.");
-                LogInfo("- Your username and IP address.");
-                LogInfo("- Please include a short description of the issue you were facing.");
-            }
-
-            if (args.Length >= 2 && args[0] == "confirm")
-            {
-                LogInfo("Sending your report to Tebex...");
-                
-                var triageEvent = new TebexTriage.ReportedTriageEvent();
-                /* FIXME
-                triageEvent.GameId = $"{GetPlugin().GetGameName()}";
-                triageEvent.FrameworkId = "RCONAdapter";
-                triageEvent.PluginVersion = GetPlugin().GetPluginVersion();
-                triageEvent.ServerIp = Protocol.GetIpAndPort();
-                */
-                triageEvent.ErrorMessage = "Player Report: " + string.Join(" ", args[1..]);
-                triageEvent.Trace = "";
-                triageEvent.Metadata = new Dictionary<string, string>()
-                {
-                
-                };
-                triageEvent.UserIp = "";
-                
-                ReportManualTriageEvent(triageEvent, (code, body) =>
-                {
-                    LogInfo("Your report has been sent. Thank you!");
-                }, (code, body) =>
-                {
-                    LogInfo("An error occurred while submitting your report. Please contact our support team directly.");
-                    LogInfo("Error: " + body);
-                });
-                
-                return;
-            }
-            
-            LogInfo("Usage: tebex.report <confirm> '<message>'");
-        }
-
+        
         public void TebexLookupCommand(string[] args)
         {
             if (args.Length != 1)
@@ -909,6 +984,7 @@ namespace Tebex.Adapters
         }
         public void TebexHelpCommand()
         {
+            // Set of most commands available. Some commands may be enabled or disabled per each integration.
             LogInfo("Tebex Commands Available:");
             LogInfo("-- Administrator Commands --");
             LogInfo("tebex.setup                       - Starts the guided setup.");
@@ -917,7 +993,6 @@ namespace Tebex.Adapters
             //LogInfo("tebex.sendlink <player> <packId>  - Sends a purchase link to the provided player.");
             LogInfo("tebex.forcecheck                  - Forces the command queue to check for any pending purchases.");
             LogInfo("tebex.refresh                     - Refreshes store information, packages, categories, etc.");
-            LogInfo("tebex.report                      - Generates a report for the Tebex support team.");
             //LogInfo("tebex.ban <playerId>              - Bans a player from using your Tebex store.");
             LogInfo("tebex.lookup <playerId>           - Looks up store statistics for the given player.");
             
@@ -942,12 +1017,12 @@ namespace Tebex.Adapters
                 return;
             }
 
-            if (IsTruthy(args[0]))
+            if (Intent.IsTruthy(args[0]))
             {
                 PluginConfig.DebugMode = true;
                 SaveConfig(PluginConfig);
             } 
-            else if (IsFalsy(args[0]))
+            else if (Intent.IsFalsy(args[0]))
             {
                 PluginConfig.DebugMode = false;
                 SaveConfig(PluginConfig);    
@@ -976,20 +1051,15 @@ namespace Tebex.Adapters
             Cache.Instance.Remove("information");
 
             // Any failure to set secret key is logged to console automatically
+            bool errored = false;
             FetchStoreInfo(info =>
             {
                 LogInfo($"This server is now registered as server {info.ServerInfo.Name} for the web store {info.AccountInfo.Name}");
-            }, tebexError =>
+                SaveConfig(PluginConfig);
+            }, (error) =>
             {
-                LogError($"Tebex error while setting your secret key: {tebexError.ErrorMessage}");
-                PluginConfig.SecretKey = oldKey;
-            }, (code, body) =>
-            {
-                LogError($"Error while setting your secret key: {body}");
-                PluginConfig.SecretKey = oldKey;
+                LogError("Failed to get store information using your key: " + error.ErrorMessage);
             });
-            
-            SaveConfig(PluginConfig);
         }
 
         public void TebexInfoCommand()
@@ -1000,12 +1070,15 @@ namespace Tebex.Adapters
                 LogInfo($" > {info.ServerInfo.Name} for webstore {info.AccountInfo.Name}");
                 LogInfo($" > Server prices are in {info.AccountInfo.Currency.Iso4217}");
                 LogInfo($" > Webstore domain {info.AccountInfo.Domain}");
+            }, (error) =>
+            {
+                LogInfo("Error retrieving store info: " + error.ErrorMessage);
             });
         }
 
         public void TebexForceCheckCommand()
         {
-            if (!IsConnected())
+            if (!IsTebexReady())
             {
                 LogInfo("Tebex is not connected. Force check cannot run without being connected to a server.");
                 return;
@@ -1021,17 +1094,15 @@ namespace Tebex.Adapters
         
         public void DoSetup()
         {
-            LogInfo("Starting Tebex setup...");
             Console.WriteLine("> Add your game server at https://creator.tebex.io/game-servers/ to get your key.");
             SetupSecretKey();
         }
 
         public void SetupSecretKey()
         {
-            var oldKey = PluginConfig.SecretKey;
             var secretKey = "";
             
-            Console.Write("Enter store secret key: ");
+            Console.Write(Ansi.Blue("Enter store secret key: "));
             secretKey = Console.ReadLine();
             if (string.IsNullOrEmpty(secretKey))
             {
@@ -1039,137 +1110,62 @@ namespace Tebex.Adapters
             }
 
             PluginConfig.SecretKey = secretKey;
-            Console.WriteLine("> Verifying secret key...");
+            Console.WriteLine(Ansi.Yellow("> Verifying secret key..."));
+            
             FetchStoreInfo(info =>
             {
-                Console.WriteLine("> Secret key set successfully");
+                Console.WriteLine(Success("Secret key set successfully"));
                 Console.WriteLine();
                 SaveConfig(PluginConfig);
-                //FIXME
-                /*SetupRCONConnection();*/
             }, error =>
             {
-                LogInfo($"> An error occurred: {error.ErrorMessage}");
-                PluginConfig.SecretKey = oldKey;
-                SaveConfig(PluginConfig);
-                Environment.Exit(1);
-            }, (code, message) =>
-            {
-                LogError($"> Encountered server error: {message}. Please try again.");
-                PluginConfig.SecretKey = oldKey;
-                SaveConfig(PluginConfig);
-                Environment.Exit(1);
+                Console.WriteLine(Error("Error while checking secret key: " + error.ErrorMessage));
+                SetupSecretKey();
             });
         }
-
-        /*
-        public void SetupRCONConnection()
-        {
-            while (true)
-            {
-                Console.Write("Enter server RCON IP (empty to skip): ");
-                var serverIp = Console.ReadLine();
-                if (String.IsNullOrEmpty(serverIp))
-                {
-                    break;
-                }
-
-                IPAddress parsedIp;
-                if (!IPAddress.TryParse(serverIp, out parsedIp))
-                {
-                    Console.WriteLine("> Invalid IP address. Please enter a valid IP address.");
-                    continue;
-                }
-
-                PluginConfig.RconIp = parsedIp.ToString();
-                SaveConfig();
-                break;
-            }
-
-            while (true)
-            {
-                Console.Write("Enter server RCON port (empty to skip): ");
-                var rconPort = Console.ReadLine();
-                var rconIntPort = 0;
-                if (String.IsNullOrEmpty(rconPort))
-                {
-                    break;
-                }
-
-                if (!int.TryParse(rconPort, out rconIntPort))
-                {
-                    Console.WriteLine("> Invalid port. Must be a number between 1 - 65535.");
-                    continue;
-                }
-
-                if (rconIntPort > 65535 || rconIntPort < 1)
-                {
-                    Console.WriteLine("> Invalid range. Must be between 1 - 65535.");
-                    continue;
-                }
-
-                PluginConfig.RconPort = rconIntPort;
-                SaveConfig();
-                break;
-            }
-            
-            Console.Write("Enter the RCON password (enter to skip): ");
-            var rconPassword = Console.ReadLine();
-            if (string.IsNullOrEmpty(rconPassword.ToString()))
-            {
-                PluginConfig.RconPassword = "";
-                LogWarning("> WARNING! It is insecure to use RCON without a password.");
-            }
-            
-            PluginConfig.RconPassword = rconPassword.ToString();
-            SaveConfig();
-            LogInfo($"> Checking connection to the server at {PluginConfig.RconIp}:{PluginConfig.RconPort}...");
-            
-            var client = new StdProtocolManager();
-            bool success = client.Connect(PluginConfig.RconIp, PluginConfig.RconPort, PluginConfig.RconPassword, false);
-            if (!success)
-            {
-                LogError("> Failed to connect to that server. Please double check that it is online, and try again.");
-            }
-            else
-            {
-                LogInfo("> Connection successful. Tebex is now set up properly.");
-                LogInfo("Please leave this application running in order for Tebex commands to be processed.");
-            }
-        }*/
         
         #endregion
+
+        /// <summary>
+        /// IsTebexReady should return true when the environment is in a sufficient state to retrieve and execute commands
+        /// from Tebex.
+        /// </summary>
+        /// <returns>True if able to process Tebex commands.</returns>
+        public abstract bool IsTebexReady();
         
-        private static readonly HashSet<string> TruthyStrings = new HashSet<string>
+        public bool CanProcessNextCommandQueue()
         {
-            "true", "yes", "on", "1", "enabled", "enable"
-        };
-
-        private static readonly HashSet<string> FalsyStrings = new HashSet<string>
-        {
-            "false", "no", "off", "0", "disabled", "disable"
-        };
-
-        public static bool IsTruthy(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return false;
-            }
-
-            return TruthyStrings.Contains(input.Trim().ToLowerInvariant());
+            return DateTime.Now > _nextCheckCommandQueue;
         }
 
-        public static bool IsFalsy(string input)
+        public bool CanProcessNextDeleteCommands()
         {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return true;
-            }
-
-            return FalsyStrings.Contains(input.Trim().ToLowerInvariant());
+            return DateTime.Now > _nextCheckDeleteCommands;
+        }
+        
+        public bool CanProcessNextJoinQueue()
+        {
+            return DateTime.Now > _nextCheckJoinQueue;
+        }
+        
+        public bool CanProcessNextRefresh()
+        {
+            return DateTime.Now > _nextCheckRefresh;
+        }
+        
+        public string Success(String message)
+        {
+            return $"[ {Ansi.Green("\u2713")} ] " + message;
         }
 
-        public abstract bool IsConnected();
+        public string Error(String message)
+        {
+            return $"[ {Ansi.Red("X")} ] " + message;
+        }
+
+        public string Warn(String message)
+        {
+            return $"[ {Ansi.Yellow("\u26a0")} ] " + message;
+        }
     }
 }

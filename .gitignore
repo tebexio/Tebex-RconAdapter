@@ -8,6 +8,7 @@
 deploy/linux/
 deploy/windows/
 deploy/osx/
+Test/
 
 # User-specific files
 *.rsuser
