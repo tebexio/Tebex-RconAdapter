@@ -22,7 +22,7 @@ To run in **Linux**, ensure the app is executable with `chmod +x ./Tebex-RCON` a
 
 Example startup command:
 ```
-./TebexRCON --game=7d2d --ip=127.0.0.1 --port=12345 --pass=password --telnet
+./TebexRCON --ip=127.0.0.1 --port=12345 --pass=password
 ```
 
 The app must remain running in the background as it checks periodically with Tebex to execute needed game server commands.
@@ -39,15 +39,11 @@ You can configure the RCON adapter directly from the command line with these arg
 ```
 --key={storeKey}         Your webstore's secret key.
 
---game={gameName}        The game plugin you wish to run. See available plugins below.
-
 --ip={serverIp}          The game server's IP address
 
 --port={serverPort}      Port for RCON connections on the game server
 
 --pass={password}        Password for your game server's RCON console
-
---telnet                 Uses telnet protocol instead of RCON
 
 --debug                  Show debug logging while running
 ```
@@ -58,8 +54,7 @@ You can also configure the RCON adapter to use environment variables at launch. 
 set below take precedence** over any value previously set in the config file or via command line.
 
 Available environment variables:
-- RCON_ADAPTER_KEY          
-- RCON_ADAPTER_GAME         
+- RCON_ADAPTER_KEY
 - RCON_ADAPTER_HOST        
 - RCON_ADAPTER_PORT         
 - RCON_ADAPTER_PASSWORD
