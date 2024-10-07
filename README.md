@@ -18,7 +18,12 @@ This utility performs various operations to facilitate Tebex interactions with s
 
 ## Installation - Linux
 
-To run in **Linux**, ensure the app is executable with `chmod +x ./Tebex-RCON` and launch with `./Tebex-RCON`.
+To run in **Linux**, download the latest Linux version from our [Releases](https://github.com/tebexio/Tebex-RconAdapter/releases) page. 
+
+1. Unzip the app.
+2. Navigate to the `linux` folder in your unzipped archive.
+3. Make the RCON adapter executable with `chmod +x ./Tebex-RCON`
+4. Launch with `./Tebex-RCON`.
 
 Example startup command:
 ```
@@ -33,7 +38,7 @@ arguments via command line or environment variables.
 ## Installation - Windows
 
 To run on Windows, follow these steps:
-1. Download the latest Windows version from our Releases page ex. `Tebex-RconAdapter-Win-1.1.0.zip`
+1. Download the latest Windows version from our [Releases](https://github.com/tebexio/Tebex-RconAdapter/releases) page ex. `Tebex-RconAdapter-Win-1.1.0.zip`
 2. Unzip the archive, open the folder it was unzipped to, and open the `windows` folder.
 3. Open a Powershell window here and type `./Tebex-RCON.exe`, then press enter.
 4. You will be prompted for your secret key on first startup. You may set your RCON information through any of the configuration options listed below.
