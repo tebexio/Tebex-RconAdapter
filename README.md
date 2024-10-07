@@ -16,7 +16,7 @@ This utility performs various operations to facilitate Tebex interactions with s
 - Process Tebex transactions and apply commands to your players using the RCON protocol.
 - Deploy and manage at scale using included Dockerfile or build and run an executable.
 
-## Installation
+## Installation - Linux
 
 To run in **Linux**, ensure the app is executable with `chmod +x ./Tebex-RCON` and launch with `./Tebex-RCON`.
 
@@ -27,10 +27,21 @@ Example startup command:
 
 The app must remain running in the background as it checks periodically with Tebex to execute needed game server commands.
 
-Alternatively, you may use the provided **Dockerfile** to build and deploy the app from source. If using Docker, you must configure launch
+You may also the provided **Dockerfile** to build and deploy the app from source. If using Docker, you must configure launch
 arguments via command line or environment variables.
 
-## Configuration and Launch
+## Installation - Windows
+
+To run on Windows, follow these steps:
+1. Download the latest Windows version from our Releases page ex. `Tebex-RconAdapter-Win-1.1.0.zip`
+2. Unzip the archive, open the folder it was unzipped to, and open the `windows` folder.
+3. Open a Powershell window here and type `./Tebex-RCON.exe`, then press enter.
+4. You will be prompted for your secret key on first startup. You may set your RCON information through any of the configuration options listed below.
+5. After setting and verifying your key, the app will attempt to connect to a default RCON server on localhost. If you require a different IP/port combination follow step #6.
+6. Open `tebex-config.json` to set your RCON connection's IP, port, and password. Save the file and relaunch `./Tebex-RCON.exe`.
+- Note: if you prefer to use command line arguments or environment variables to store your config, see the Configuration section below.
+
+## Configuration
 
 ### Command Line Args
 
