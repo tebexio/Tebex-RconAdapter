@@ -135,7 +135,21 @@ namespace Tebex.Adapters
                     if (!connectResult.Item1) // failed to connect
                     {
                         LogError(Error($"{connectResult.Item2}. Check that your RCON connection parameters are correct, and try again."));
-                        Environment.Exit(1);
+
+                        Console.Write(Warn("Would you like to re-enter your RCON server information? [Y/N]: "));
+                        var doInitiateSetup = Console.ReadLine();
+                        if (string.IsNullOrEmpty(doInitiateSetup) || doInitiateSetup.ToLower().Equals("n"))
+                        {
+                            Environment.Exit(1);
+                            return;
+                            
+                        }
+                        
+                        // User indicates they want to re-run setup. Start with RCON IP which will transition to prompt for port and password as well.
+                        GetUserRconIp();
+                        
+                        Console.WriteLine(Success("Configuration updated. Retrying..."));
+                        Init();
                         return;
                     }
 

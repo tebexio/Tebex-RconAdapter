@@ -1,3 +1,4 @@
+using System.Net;
 using Newtonsoft.Json;
 using Tebex.API;
 using Tebex.Util;
@@ -1102,7 +1103,7 @@ namespace Tebex.Adapters
         {
             var secretKey = "";
             
-            Console.Write(Ansi.Blue("Enter store secret key: "));
+            Console.Write(Ansi.Yellow("Enter store secret key: "));
             secretKey = Console.ReadLine();
             if (string.IsNullOrEmpty(secretKey))
             {
@@ -1117,11 +1118,74 @@ namespace Tebex.Adapters
                 Console.WriteLine(Success("Secret key set successfully"));
                 Console.WriteLine();
                 SaveConfig(PluginConfig);
+                GetUserRconIp();
             }, error =>
             {
                 Console.WriteLine(Error("Error while checking secret key: " + error.ErrorMessage));
                 SetupSecretKey();
             });
+        }
+
+        public void GetUserRconIp()
+        {
+            Console.Write(Ansi.Yellow("Enter your RCON server IP: "));
+            var rconIpInput = Console.ReadLine();
+            IPAddress? parsedIp = null;
+            bool isValidIp = IPAddress.TryParse(rconIpInput, out parsedIp); 
+            if (string.IsNullOrEmpty(rconIpInput) || !isValidIp)
+            {
+                GetUserRconIp();
+                return;
+            }
+
+            PluginConfig.RconIp = rconIpInput;
+            SaveConfig(PluginConfig);
+            
+            GetUserRconPort();
+        }
+        
+        public void GetUserRconPort()
+        {
+            Console.Write(Ansi.Yellow("Enter your RCON server port: "));
+            var rconPortInput = Console.ReadLine();
+            int parsedPort = -1;
+            bool isValidPort = int.TryParse(rconPortInput, out parsedPort);
+            if (string.IsNullOrEmpty(rconPortInput) || !isValidPort || parsedPort <= 0 || parsedPort >= 65536)
+            {
+                Console.WriteLine(Warn("Invalid port ID, must be between 1 and 65535"));
+                GetUserRconPort();
+                return;
+            }
+            
+            // Valid RCON port provided
+            PluginConfig.RconPort = parsedPort;
+            SaveConfig(PluginConfig);
+            GetUserRconPassword();
+        }
+
+        public void GetUserRconPassword()
+        {
+            Console.Write(Ansi.Yellow("Enter your RCON server password: "));
+            var rconPasswordInput = Console.ReadLine();
+            if (string.IsNullOrEmpty(rconPasswordInput))
+            {
+                Console.Write(Warn("Connecting to RCON without a password is VERY insecure! Continue? [Y/N]: "));
+                var rconPasswordConfirmInput = Console.ReadLine();
+                if (string.IsNullOrEmpty(rconPasswordConfirmInput) || rconPasswordConfirmInput.ToLower().Equals("n"))
+                {
+                    GetUserRconPassword();
+                    return;
+                }
+
+                // user entered "Y" to connect without password
+                PluginConfig.RconPassword = "";
+                SaveConfig(PluginConfig);
+                return;
+            }
+            
+            // user provided a password
+            PluginConfig.RconPassword = rconPasswordInput;
+            SaveConfig(PluginConfig);
         }
         
         #endregion
