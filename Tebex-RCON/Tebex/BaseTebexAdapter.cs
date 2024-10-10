@@ -597,7 +597,7 @@ namespace Tebex.Adapters
                         });
                     }, (offlineComandsCode, offlineCommandsServerError) => // Server error from offline commands
                     {
-                        LogError("Unexpected error response from API while processing offline commands", new Dictionary<string, string>()
+                        LogError("Unexpected error response from API while processing offline commands: " + offlineCommandsServerError, new Dictionary<string, string>()
                         {
                             {"code", offlineComandsCode.ToString()},
                             {"responseBody", offlineCommandsServerError}
