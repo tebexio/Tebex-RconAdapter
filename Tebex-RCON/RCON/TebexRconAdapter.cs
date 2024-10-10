@@ -363,7 +363,7 @@ namespace Tebex.Adapters
         public override string ExpandOfflineVariables(string input, TebexApi.PlayerInfo info)
         {
             string parsed = input;
-            parsed = parsed.Replace("{id}", info.Id);
+            parsed = parsed.Replace("{id}", info.Uuid);
             parsed = parsed.Replace("{username}", info.Username);
             parsed = parsed.Replace("{name}", info.Username);
 
