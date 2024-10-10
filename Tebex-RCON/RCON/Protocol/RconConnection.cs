@@ -188,6 +188,12 @@ public class RconConnection
             RconPacket packet = new RconPacket(NextId(), packetType, message);
             byte[] request = SerializePacket(packet);
             Stream.Write(request, 0, request.Length);
+
+            if (Requests.ContainsKey(packet.Id))
+            {
+                Requests.Remove(packet.Id);
+            }
+            
             Requests.Add(packet.Id, packet);
             return packet;
         }
@@ -277,6 +283,11 @@ public class RconConnection
         var packet = new RconPacket(responseId, (RconPacket.Type)responseType, responseString);
         if (packet.Id > 0)
         {
+            if (Responses.ContainsKey(packet.Id))
+            {
+                Responses.Remove(packet.Id);
+            }
+            
             Responses.Add(packet.Id, packet);
         }
         return packet;
