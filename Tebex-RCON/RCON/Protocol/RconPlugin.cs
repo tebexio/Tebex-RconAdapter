@@ -34,7 +34,14 @@ public abstract class RconPlugin
     /// <returns><see cref="TebexPlatform"/></returns>
     public TebexPlatform GetPlatform()
     {
-        return new TebexPlatform(GetPluginVersion(), new TebexTelemetry("RCON-Adapter", TebexRconAdapter.Version, _rcon.GetType().Name));
+        if (_rcon != null)
+        {
+            return new TebexPlatform(GetPluginVersion(), new TebexTelemetry("RCON-Adapter", TebexRconAdapter.Version, _rcon.GetType().Name));    
+        }
+        else
+        {
+            return new TebexPlatform(GetPluginVersion(), new TebexTelemetry("RCON-Adapter", TebexRconAdapter.Version, TebexRconAdapter.Version));
+        }
     }
 
     /// <summary>
