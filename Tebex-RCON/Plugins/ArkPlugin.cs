@@ -41,7 +41,19 @@ namespace Tebex.Plugins
 
         public override bool IsPlayerOnline(TebexApi.DuePlayer player)
         {
-            return _lastPlayerList.Contains(player.UUID);
+            bool foundUuid = _lastPlayerList.Contains(player.UUID);
+            if (!foundUuid)
+            {
+                _adapter.LogDebug("did not find " + player.Name + " by uuid in player list: " + player.UUID);
+                bool foundName = _lastPlayerList.Contains(player.Name);
+                if (!foundName)
+                {
+                    _adapter.LogDebug("did not find " + player.Name + " by name in player list");
+                }
+                _adapter.LogDebug("successfully found " + player.Name + " by name in player list");
+                return foundName;
+            }
+            return foundUuid;
         }
 
         public override string ExpandGameUsernameVariables(string cmd, object playerObj)
