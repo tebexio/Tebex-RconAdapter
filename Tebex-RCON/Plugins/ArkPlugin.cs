@@ -36,7 +36,7 @@ namespace Tebex.Plugins
 
         public override string GetPluginVersion()
         {
-            return "1.0.1-DEV";
+            return "1.0.1";
         }
 
         public override bool IsPlayerOnline(TebexApi.DuePlayer player)
