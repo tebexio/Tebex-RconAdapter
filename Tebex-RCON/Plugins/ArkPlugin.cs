@@ -49,9 +49,10 @@ namespace Tebex.Plugins
                 if (!foundName)
                 {
                     _adapter.LogDebug("did not find " + player.Name + " by name in player list");
+                    return false;
                 }
                 _adapter.LogDebug("successfully found " + player.Name + " by name in player list");
-                return foundName;
+                return true;
             }
             return foundUuid;
         }
