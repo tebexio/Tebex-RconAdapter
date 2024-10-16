@@ -18,6 +18,7 @@ public class RconConnection
     protected readonly Dictionary<int, RconPacket> Responses;
     protected readonly TebexRconAdapter Adapter;
     private int _nextId = 1;
+    private bool _allowReconnect = false;
     
     public RconConnection(TebexRconAdapter adapter, string host, int port, string password)
     {
@@ -45,7 +46,13 @@ public class RconConnection
             
             Tcp.Connect(Host, Port);
             Stream = Tcp.GetStream();
-            return Auth();
+            var authResult = Auth();
+            if (authResult.Item1)
+            {
+                _allowReconnect = true;
+            }
+
+            return authResult;
         }
         catch (SocketException ex)
         {
@@ -59,6 +66,11 @@ public class RconConnection
     /// <returns>True if reconnection was successful.</returns>
     protected virtual bool Reconnect()
     {
+        if (!_allowReconnect)
+        {
+            return false;
+        }
+        
         CloseConnection();
 
         Adapter.LogError(Adapter.Error($"Connection to RCON server lost!"));
@@ -176,9 +188,13 @@ public class RconConnection
         // Ensure that all connection parameters are assigned and still valid
         if (Stream == null || Tcp == null || !Tcp.Connected)
         {
-            if (!Reconnect())
+            if (_allowReconnect && !Reconnect())
             {
                 throw new InvalidOperationException("Unable to reconnect to the RCON server.");
+            } else if (!_allowReconnect)
+            {
+                //return a dummy packet to exit reconnect logic
+                return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting after send fail");
             }
         }
 
@@ -200,7 +216,7 @@ public class RconConnection
         catch (SocketException e)
         {
             Adapter.LogError(e.Message);
-            if (Reconnect())
+            if (_allowReconnect && Reconnect())
             {
                 //return a dummy packet to exit reconnect logic
                 return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting after send fail");
@@ -244,18 +260,31 @@ public class RconConnection
         {
             Adapter.LogError(e.Message);
             Console.WriteLine(e.StackTrace);
-            if (Reconnect())
+            if (_allowReconnect)
             {
-                // return a dummy packet so we can exit this func and carry on with normal operation after reconnect
-                return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting after receive fail");
+                if (Reconnect())
+                {
+                    // return a dummy packet so we can exit this func and carry on with normal operation after reconnect
+                    return new RconPacket(-1, RconPacket.Type.CommandResponse, "reconnecting after receive fail");
+                }
+                else
+                {
+                    throw new InvalidOperationException("Failed to reconnect to the RCON server.");
+                    
+                }
             }
-            else
+            else // reconnect not allowed yet
             {
-                throw new InvalidOperationException("Failed to reconnect to the RCON server.");
+                return new RconPacket(-1, RconPacket.Type.CommandResponse, "not reconnecting");
             }
         }
     }
 
+    public bool IsConnected()
+    {
+        return Stream != null && Tcp.Connected;
+    }
+    
     /// <summary>
     /// ReadPacket will read the next RCON packet from our connected stream.
     /// </summary>

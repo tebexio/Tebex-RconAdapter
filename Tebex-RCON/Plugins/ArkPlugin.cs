@@ -11,12 +11,17 @@ namespace Tebex.Plugins
         public ArkPlugin(TebexRconAdapter adapter) : base(adapter)
         {
             TebexRconAdapter.ExecuteEvery(TimeSpan.FromSeconds(5), () =>
-            { 
+            {
                 _adapter.LogDebug("listplayers");
                 
                 if (_adapter.GetRcon() == null)
                 {
                     _adapter.LogDebug("no rcon");
+                    return;
+                }
+
+                if (!_adapter.GetRcon().IsConnected())
+                {
                     return;
                 }
                 
