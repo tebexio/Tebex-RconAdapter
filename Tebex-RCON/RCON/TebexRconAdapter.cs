@@ -26,7 +26,7 @@ namespace Tebex.Adapters
             {"Conan Exiles", typeof(ConanExilesPlugin)},
         };
         
-        public const string Version = "1.1.1-DEV";
+        public const string Version = "1.1.1";
         private const string ConfigFilePath = "./tebex-config.json";
         
         private RconPlugin? _plugin;
