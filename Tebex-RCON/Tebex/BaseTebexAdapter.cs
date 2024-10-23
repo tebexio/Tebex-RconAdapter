@@ -162,6 +162,11 @@ namespace Tebex.Adapters
             public bool SuppressErrors = false;
             
             public bool AutoReportingEnabled = true;
+
+            /// <summary>
+            /// True to skip checking if players are online. WARNING: Online commands will be executed immediately!
+            /// </summary>
+            public bool DisableOnlineCheck = false;
             
             /// <summary>
             /// The store's Tebex secret key

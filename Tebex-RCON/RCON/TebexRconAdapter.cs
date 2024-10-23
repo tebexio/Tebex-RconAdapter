@@ -236,7 +236,8 @@ namespace Tebex.Adapters
 
                 _startupConfig.CacheLifetime = fileConfig.CacheLifetime;
                 _startupConfig.AutoReportingEnabled = fileConfig.AutoReportingEnabled;
-
+                _startupConfig.DisableOnlineCheck = fileConfig.DisableOnlineCheck;
+                
                 // If debug mode wasn't requested from env or command line, ensure we read
                 // the set value from the config file
                 if (!newStartupConfig.DebugMode)
@@ -329,6 +330,11 @@ namespace Tebex.Adapters
 
         public override bool IsPlayerOnline(TebexApi.DuePlayer duePlayer)
         {
+            if (PluginConfig.DisableOnlineCheck)
+            {
+                return true;
+            }
+                
             // Passthrough to an enabled plugin to determine if players are online.
             if (_plugin != null)
             {
