@@ -26,7 +26,7 @@ namespace Tebex.Adapters
             {"Conan Exiles", typeof(ConanExilesPlugin)},
         };
         
-        public const string Version = "1.1.0";
+        public const string Version = "1.1.1";
         private const string ConfigFilePath = "./tebex-config.json";
         
         private RconPlugin? _plugin;
@@ -135,7 +135,21 @@ namespace Tebex.Adapters
                     if (!connectResult.Item1) // failed to connect
                     {
                         LogError(Error($"{connectResult.Item2}. Check that your RCON connection parameters are correct, and try again."));
-                        Environment.Exit(1);
+
+                        Console.Write(Warn("Would you like to re-enter your RCON server information? [Y/N]: "));
+                        var doInitiateSetup = Console.ReadLine();
+                        if (string.IsNullOrEmpty(doInitiateSetup) || doInitiateSetup.ToLower().Equals("n"))
+                        {
+                            Environment.Exit(1);
+                            return;
+                            
+                        }
+                        
+                        // User indicates they want to re-run setup. Start with RCON IP which will transition to prompt for port and password as well.
+                        GetUserRconIp();
+                        
+                        Console.WriteLine(Success("Configuration updated. Retrying..."));
+                        Init();
                         return;
                     }
 
@@ -222,7 +236,8 @@ namespace Tebex.Adapters
 
                 _startupConfig.CacheLifetime = fileConfig.CacheLifetime;
                 _startupConfig.AutoReportingEnabled = fileConfig.AutoReportingEnabled;
-
+                _startupConfig.DisableOnlineCheck = fileConfig.DisableOnlineCheck;
+                
                 // If debug mode wasn't requested from env or command line, ensure we read
                 // the set value from the config file
                 if (!newStartupConfig.DebugMode)
@@ -315,6 +330,11 @@ namespace Tebex.Adapters
 
         public override bool IsPlayerOnline(TebexApi.DuePlayer duePlayer)
         {
+            if (PluginConfig.DisableOnlineCheck)
+            {
+                return true;
+            }
+                
             // Passthrough to an enabled plugin to determine if players are online.
             if (_plugin != null)
             {
@@ -349,7 +369,7 @@ namespace Tebex.Adapters
         public override string ExpandOfflineVariables(string input, TebexApi.PlayerInfo info)
         {
             string parsed = input;
-            parsed = parsed.Replace("{id}", info.Id);
+            parsed = parsed.Replace("{id}", info.Uuid);
             parsed = parsed.Replace("{username}", info.Username);
             parsed = parsed.Replace("{name}", info.Username);
 
