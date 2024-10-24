@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Runtime.CompilerServices;
+using System.Text;
 using Newtonsoft.Json;
 using Tebex.API;
 using Tebex.Plugins;
@@ -489,8 +490,15 @@ namespace Tebex.Adapters
                     // Due but not ready, try to execute every second
                     await Task.Delay(1000, cancellationTokenSource.Token);
                 }
-                
-                action();
+
+                try
+                {
+                    action();
+                }
+                catch (Exception e)
+                {
+                    Instance.LogError("Recurring action failed: " + e.Message);
+                }
 
                 try
                 {
