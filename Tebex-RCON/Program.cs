@@ -161,8 +161,12 @@ while (true)
     }
     else //non-polling connections we can sequentially send and receive packets
     {
-        var command = rcon.Send(input);
-        var response = rcon.ReceiveNext();
+        RconPacket command, response;
+        lock (rcon.SyncRoot)
+        {
+            command = rcon.Send(input);
+            response = rcon.ReceiveNext();
+        }
         
         adapter.LogInfo(command.ToString());
         adapter.LogInfo(response.ToString());

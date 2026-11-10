@@ -153,8 +153,10 @@ namespace Tebex.Adapters
                         return;
                     }
 
-                    // Setup timed functions
-                    ExecuteEvery(TimeSpan.FromSeconds(45), () =>
+                    // Setup timed functions. The command queue is checked frequently, but ProcessCommandQueue only
+                    // contacts Tebex once the API-provided next_check time has passed, so this does not increase API usage.
+                    // Checking every 45 seconds could add up to 45 extra seconds of delay on top of next_check.
+                    ExecuteEvery(TimeSpan.FromSeconds(5), () =>
                     { 
                         ProcessCommandQueue(false);
                     });
@@ -285,18 +287,24 @@ namespace Tebex.Adapters
                 ExecuteOnce(command.Conditions.Delay,
                     () =>
                     {
-                        var req = _rcon.Send(rconCommand);
-                        var response = _rcon.ReceiveResponseTo(req.Id, 10);
-                        LogDebug("delayed offline command request: " + req);
-                        LogDebug("delayed offline command response: {} " + response);
+                        lock (_rcon.SyncRoot)
+                        {
+                            var req = _rcon.Send(rconCommand);
+                            var response = _rcon.ReceiveResponseTo(req.Id, 10);
+                            LogDebug("delayed offline command request: " + req);
+                            LogDebug("delayed offline command response: {} " + response);
+                        }
                     });
             }
             else // No delay, execute immediately
             {
-                var req = _rcon.Send(rconCommand);
-                var response = _rcon.ReceiveNext();
-                LogDebug("offline command request: " + req);
-                LogDebug("offline command response: {} " + response);
+                lock (_rcon.SyncRoot)
+                {
+                    var req = _rcon.Send(rconCommand);
+                    var response = _rcon.ReceiveNext();
+                    LogDebug("offline command request: " + req);
+                    LogDebug("offline command response: {} " + response);
+                }
             }
         }
 
@@ -306,8 +314,12 @@ namespace Tebex.Adapters
             cmd = _plugin.ExpandGameUsernameVariables(cmd, player);
             
             LogInfo($"> Executing online command: {cmd}");
-            var req = _rcon.Send(cmd);
-            var response = _rcon.ReceiveResponseTo(req.Id, 10);
+            Tuple<RconResponse, string> response;
+            lock (_rcon.SyncRoot)
+            {
+                var req = _rcon.Send(cmd);
+                response = _rcon.ReceiveResponseTo(req.Id, 10);
+            }
             if (!response.Item2.Equals("")) // error message in response pair
             {
                 LogError("Failed to run online command: " + response.Item2);
@@ -490,7 +502,20 @@ namespace Tebex.Adapters
                     await Task.Delay(1000, cancellationTokenSource.Token);
                 }
                 
-                action();
+                // An exception escaping here would crash the whole process (async void), e.g. when the game server
+                // restarts and the RCON socket is reset mid-write. Log it and try again on the next interval.
+                try
+                {
+                    action();
+                }
+                catch (Exception e)
+                {
+                    Instance?.LogDebug(e.ToString());
+                    if (Instance != null)
+                    {
+                        ((TebexRconAdapter)Instance)._log("Timed task failed: " + e.Message + ". Will retry.", LogLevel.Warning);
+                    }
+                }
 
                 try
                 {
@@ -512,8 +537,19 @@ namespace Tebex.Adapters
         /// <param name="action">The action/function to perform.</param>
         public static async void ExecuteOnce(int delaySeconds, Action action)
         {
-            await Task.Delay(delaySeconds);
-            action();
+            await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+            try
+            {
+                action();
+            }
+            catch (Exception e)
+            {
+                Instance?.LogDebug(e.ToString());
+                if (Instance != null)
+                {
+                    ((TebexRconAdapter)Instance)._log("Delayed command failed: " + e.Message, LogLevel.Warning);
+                }
+            }
         }
         
         #endregion
