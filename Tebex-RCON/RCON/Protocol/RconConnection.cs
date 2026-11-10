@@ -19,6 +19,27 @@ public class RconConnection
     protected readonly TebexRconAdapter Adapter;
     private int _nextId = 1;
     private bool _allowReconnect = false;
+
+    /// <summary>
+    /// Set while <see cref="Reconnect"/> is re-establishing the connection. Errors raised during reconnect are thrown back
+    /// to the reconnect loop instead of starting a nested reconnect.
+    /// </summary>
+    private volatile bool _reconnecting = false;
+
+    /// <summary>
+    /// Lock used to serialize request/response exchanges on this connection. Several timers (player list polling, command
+    /// queue, console input) share a single stream, so a Send() and its matching Receive must be done while holding
+    /// this lock or responses can be consumed by the wrong caller.
+    /// </summary>
+    public readonly object SyncRoot = new object();
+
+    /// <summary>
+    /// True if the exception indicates the underlying connection was lost (socket reset, broken pipe, disposed stream).
+    /// </summary>
+    protected static bool IsConnectionError(Exception e)
+    {
+        return e is IOException || e is SocketException || e is ObjectDisposedException;
+    }
     
     public RconConnection(TebexRconAdapter adapter, string host, int port, string password)
     {
@@ -71,6 +92,28 @@ public class RconConnection
             return false;
         }
         
+        lock (SyncRoot)
+        {
+            // Another caller may have already reconnected while we were waiting for the lock
+            if (_reconnecting)
+            {
+                throw new IOException("Reconnect already in progress.");
+            }
+            
+            _reconnecting = true;
+            try
+            {
+                return DoReconnect();
+            }
+            finally
+            {
+                _reconnecting = false;
+            }
+        }
+    }
+
+    private bool DoReconnect()
+    {
         CloseConnection();
 
         Adapter.LogError(Adapter.Error($"Connection to RCON server lost!"));
@@ -83,7 +126,10 @@ public class RconConnection
                 Adapter.LogInfo(Adapter.Warn($"Attempting reconnect #{tries}..."));
                 
                 // Attempt reconnect and re-auth
+                CloseConnection();
                 Tcp = new TcpClient();
+                Tcp.ReceiveTimeout = 1000 * 10;
+                Tcp.SendTimeout = 1000 * 10;
                 Tcp.Connect(Host, Port);
                 Stream = Tcp.GetStream();
                 var authSuccess = Auth();
@@ -103,14 +149,13 @@ public class RconConnection
                 
                 return true;
             }
-            catch (SocketException e)
+            catch (Exception e) when (IsConnectionError(e) || e is InvalidOperationException)
             {
+                // Server is likely still restarting (port closed, or accepted then reset during startup). Keep trying.
+                Adapter.LogDebug($"Reconnect attempt #{tries} failed: {e.Message}");
                 Thread.Sleep(5000);
-                continue;
             }    
         }
-
-        return false;
     }
 
     /// <summary>
@@ -118,8 +163,8 @@ public class RconConnection
     /// </summary>
     protected virtual void CloseConnection()
     {
-        Stream?.Close();
-        Tcp?.Close();
+        try { Stream?.Close(); } catch (Exception) { /* ignored */ }
+        try { Tcp?.Close(); } catch (Exception) { /* ignored */ }
     }
 
     /// <summary>
@@ -213,8 +258,14 @@ public class RconConnection
             Requests.Add(packet.Id, packet);
             return packet;
         }
-        catch (SocketException e)
+        catch (Exception e) when (IsConnectionError(e))
         {
+            // While reconnecting, let the reconnect loop handle the failure
+            if (_reconnecting)
+            {
+                throw;
+            }
+            
             Adapter.LogError(e.Message);
             if (_allowReconnect && Reconnect())
             {
@@ -258,8 +309,14 @@ public class RconConnection
         }
         catch (Exception e)
         {
+            // While reconnecting, let the reconnect loop handle the failure
+            if (_reconnecting)
+            {
+                throw;
+            }
+            
             Adapter.LogError(e.Message);
-            Console.WriteLine(e.StackTrace);
+            Adapter.LogDebug(e.StackTrace ?? "");
             if (_allowReconnect)
             {
                 if (Reconnect())
@@ -282,7 +339,7 @@ public class RconConnection
 
     public bool IsConnected()
     {
-        return Stream != null && Tcp.Connected;
+        return Stream != null && Tcp != null && Tcp.Connected;
     }
     
     /// <summary>

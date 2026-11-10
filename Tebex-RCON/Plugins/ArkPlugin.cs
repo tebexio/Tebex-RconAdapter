@@ -6,7 +6,7 @@ namespace Tebex.Plugins
 {
     public class ArkPlugin : RconPlugin
     {
-        private String _lastPlayerList;
+        private String _lastPlayerList = "";
         
         public ArkPlugin(TebexRconAdapter adapter) : base(adapter)
         {
@@ -20,32 +20,56 @@ namespace Tebex.Plugins
                     return;
                 }
 
-                if (!_adapter.GetRcon().IsConnected())
+                var rcon = _adapter.GetRcon();
+                if (!rcon.IsConnected())
                 {
                     return;
                 }
                 
-                var listPlayersCommand = _adapter.GetRcon().Send("listplayers");
-                RconPacket listPlayersResponse;
-                listPlayersResponse = _adapter.GetRcon().ReceiveNext();
-                
-                // Keep Alive packets seem to knock things out of order, we can just ignore when we grab the wrong response
-                // because we should be updating the list of players every few seconds anyway.
-                if (listPlayersResponse != null && !listPlayersResponse.Message.Contains("But no response!!"))
+                // Hold the connection lock so the command queue can't consume our response (or we consume theirs).
+                Tuple<RconResponse, string> result;
+                lock (rcon.SyncRoot)
                 {
-                    _adapter.LogDebug("received player list: " + listPlayersResponse.Message);
-                    _lastPlayerList = listPlayersResponse.Message;
+                    var listPlayersCommand = rcon.Send("listplayers");
+                    if (listPlayersCommand.Id <= 0)
+                    {
+                        return; // dummy packet, connection was just re-established
+                    }
+                    
+                    // Match on packet ID so stray keep-alive/old packets can't be mistaken for the player list
+                    result = rcon.ReceiveResponseTo(listPlayersCommand.Id, 3);
                 }
+                
+                if (result.Item2 != "")
+                {
+                    _adapter.LogDebug("failed to get player list: " + result.Item2);
+                    return;
+                }
+                
+                var message = result.Item1.Response.Message;
+                if (message.Contains("But no response!!"))
+                {
+                    return;
+                }
+                
+                _adapter.LogDebug("received player list: " + message);
+                _lastPlayerList = message;
             });
         }
 
         public override string GetPluginVersion()
         {
-            return "1.0.1";
+            return "1.0.2";
         }
 
         public override bool IsPlayerOnline(TebexApi.DuePlayer player)
         {
+            if (string.IsNullOrEmpty(_lastPlayerList))
+            {
+                _adapter.LogDebug("player list not yet received, assuming " + player.Name + " is offline");
+                return false;
+            }
+            
             bool foundUuid = _lastPlayerList.Contains(player.UUID);
             if (!foundUuid)
             {
